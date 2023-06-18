@@ -156,6 +156,90 @@ impl TimeKeeper {
     }
 }
 
+#[derive(Debug, Clone)]
+struct State {
+    P: Vec<isize>,
+    B: Vec<u8>,
+    dist_from_station_to_home: Vec<Vec<isize>>,
+    covered_cnt: Vec<usize>,
+}
+
+impl State {
+    fn new() -> Self {
+        let mut dist_from_station_to_home = vec![vec![0; *K]; *N];
+        let mut covered_cnt = vec![0; *K];
+
+        for (i, &(x, y)) in XY.iter().enumerate() {
+            for (j, &(a, b)) in AB.iter().enumerate() {
+                let dx = x - a;
+                let dy = y - b;
+                let d = ((dx * dx) as f64 + (dy * dy) as f64).sqrt().ceil() as isize;
+                dist_from_station_to_home[i][j] = d;
+                if d <= P_MAX {
+                    covered_cnt[j] += 1;
+                }
+            }
+        }
+
+        State {
+            P: vec![5000; *N],
+            B: vec![1; *M],
+            dist_from_station_to_home,
+            covered_cnt,
+        }
+    }
+    fn update_covered_cnt(&mut self, station: usize, power: isize) {
+        let before_power = self.P[station];
+        for (home, d) in self.dist_from_station_to_home[station].iter().enumerate() {
+            if (*d <= power) == (*d <= before_power) {
+                continue;
+            }
+            if *d <= power {
+                self.covered_cnt[home] += 1;
+            } else {
+                self.covered_cnt[home] -= 1;
+            }
+        }
+        self.P[station] = power;
+    }
+    fn cover_home(&self) -> bool {
+        self.covered_cnt.iter().all(|&x| x > 0)
+    }
+    fn binary_search_power(&mut self) {
+        for i in 0..*N {
+            let mut l = -1;
+            let mut r = P_MAX;
+            while r - l > 1 {
+                let m = (l + r) / 2;
+                self.update_covered_cnt(i, m);
+                if self.cover_home() {
+                    r = m;
+                } else {
+                    l = m;
+                }
+            }
+            self.update_covered_cnt(i, r);
+        }
+    }
+    fn kruskal(&mut self) {
+        let mut WUV: Vec<_> = UVW
+            .iter()
+            .zip(0..)
+            .map(|((u, v, w), i)| (w, u, v, i))
+            .collect();
+        WUV.sort();
+        let mut uf = UnionFind::new(*N);
+        for &(_w, u, v, i) in &WUV {
+            if !uf.is_same(*u, *v) {
+                uf.unite(*u, *v);
+                self.B[i] = 1;
+            } else {
+                self.B[i] = 0;
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 struct Solver {}
 impl Solver {
@@ -163,27 +247,25 @@ impl Solver {
     fn solve(&mut self) {
         lazy_static::initialize(&_INPUT);
 
-        let start = std::time::Instant::now();
-        let time_limit = 1.5;
-        let time_keeper = TimeKeeper::new(time_limit);
+        // let start = std::time::Instant::now();
+        // let time_limit = 1.5;
+        // let time_keeper = TimeKeeper::new(time_limit);
 
-        let mut P = vec![P_MAX; *N];
-        let mut B = vec![0; *M];
-        
-        
+        let mut state = State::new();
+        state.binary_search_power();
+        state.kruskal();
 
+        // #[allow(unused_mut, unused_assignments)]
+        // let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
+        // #[cfg(feature = "local")]
+        // {
+        //     eprintln!("Local Mode");
+        //     elapsed_time *= 1.5;
+        // }
+        // eprintln!("Elapsed time: {}sec", elapsed_time);
 
-        #[allow(unused_mut, unused_assignments)]
-        let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
-        #[cfg(feature = "local")]
-        {
-            eprintln!("Local Mode");
-            elapsed_time *= 1.5;
-        }
-        eprintln!("Elapsed time: {}sec", elapsed_time);
-
-        println!("{}", P.iter().join(" "));
-        println!("{}", B.iter().join(" "));
+        println!("{}", state.P.iter().join(" "));
+        println!("{}", state.B.iter().join(" "));
     }
 }
 
