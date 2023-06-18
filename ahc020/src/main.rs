@@ -162,6 +162,7 @@ struct State {
     B: Vec<u8>,
     dist_from_station_to_home: Vec<Vec<isize>>,
     covered_cnt: Vec<usize>,
+    // G: Vec<Vec<(usize, isize, usize)>>,
 }
 
 impl State {
@@ -180,12 +181,18 @@ impl State {
                 }
             }
         }
+        // let mut G = vec![vec![]; *N];
+        // for (i, &(u, v, w)) in UVW.iter().enumerate() {
+        //     G[u].push((v, w, i));
+        //     G[v].push((u, w, i));
+        // }
 
         State {
             P: vec![5000; *N],
             B: vec![1; *M],
             dist_from_station_to_home,
             covered_cnt,
+            // G,
         }
     }
     fn update_covered_cnt(&mut self, station: usize, power: isize) {
