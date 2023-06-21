@@ -228,6 +228,15 @@ impl State {
             self.update_covered_cnt(i, r);
         }
     }
+    fn hill_climbing(&mut self, delta: usize) {
+        let station = rnd::gen_range(0, *N);
+        let before_power = self.P[station];
+        let power = max!(0, before_power - rnd::gen_range(1, delta) as isize);
+        self.update_covered_cnt(station, power);
+        if !self.cover_home() {
+            self.update_covered_cnt(station, before_power);
+        }
+    }
     fn kruskal(&mut self) {
         let mut WUV: Vec<_> = UVW
             .iter()
@@ -306,23 +315,29 @@ impl Solver {
     fn solve(&mut self) {
         lazy_static::initialize(&_INPUT);
 
-        // let start = std::time::Instant::now();
-        // let time_limit = 1.5;
-        // let time_keeper = TimeKeeper::new(time_limit);
+        let start = std::time::Instant::now();
+        let time_limit = 1.8;
+        let time_keeper = TimeKeeper::new(time_limit);
 
         let mut state = State::new();
-        state.binary_search_power();
-        // state.kruskal();
-        state.dijkstra();
+        
 
-        // #[allow(unused_mut, unused_assignments)]
-        // let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
-        // #[cfg(feature = "local")]
-        // {
-        //     eprintln!("Local Mode");
-        //     elapsed_time *= 1.5;
-        // }
-        // eprintln!("Elapsed time: {}sec", elapsed_time);
+        // state.binary_search_power();
+
+        while !time_keeper.isTimeOver() {
+            state.hill_climbing(100);
+        }
+
+        state.kruskal();
+
+        #[allow(unused_mut, unused_assignments)]
+        let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
+        #[cfg(feature = "local")]
+        {
+            eprintln!("Local Mode");
+            elapsed_time *= 1.5;
+        }
+        eprintln!("Elapsed time: {}sec", elapsed_time);
 
         println!("{}", state.P.iter().join(" "));
         println!("{}", state.B.iter().join(" "));
