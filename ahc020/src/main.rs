@@ -162,7 +162,7 @@ struct State {
     B: Vec<u8>,
     dist_from_station_to_home: Vec<Vec<isize>>,
     covered_cnt: Vec<usize>,
-    // G: Vec<Vec<(usize, isize, usize)>>,
+    G: Vec<Vec<(usize, isize, usize)>>,
 }
 
 impl State {
@@ -181,18 +181,18 @@ impl State {
                 }
             }
         }
-        // let mut G = vec![vec![]; *N];
-        // for (i, &(u, v, w)) in UVW.iter().enumerate() {
-        //     G[u].push((v, w, i));
-        //     G[v].push((u, w, i));
-        // }
+        let mut G = vec![vec![]; *N];
+        for (i, &(u, v, w)) in UVW.iter().enumerate() {
+            G[u].push((v, w, i));
+            G[v].push((u, w, i));
+        }
 
         State {
             P: vec![5000; *N],
             B: vec![1; *M],
             dist_from_station_to_home,
             covered_cnt,
-            // G,
+            G,
         }
     }
     fn update_covered_cnt(&mut self, station: usize, power: isize) {
@@ -245,6 +245,58 @@ impl State {
             }
         }
     }
+    fn dijkstra(&mut self) {
+        self.B = vec![0; *M]; // initialize all off
+        let mut d = vec![INF; *N];
+        let mut Q = BinaryHeap::new();
+        d[0] = 0;
+        Q.push(Reverse((0, 0)));
+        while !Q.is_empty() {
+            let Reverse((_, pos)) = Q.pop().unwrap();
+            for &(next, w, _) in &self.G[pos] {
+                if d[pos] + w < d[next] {
+                    d[next] = d[pos] + w;
+                    Q.push(Reverse((d[next], next)));
+                }
+            }
+        }
+
+        for i in 0..*N {
+            let mut now = i;
+            while now != 0 {
+                for &(before, w, e) in &self.G[now] {
+                    if d[before] == d[now] - w {
+                        now = before;
+                        self.B[e] = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        for _ in 0..100 {
+            for i in 0..*N {
+                if self.P[i] != 0 {
+                    continue;
+                }
+                for &(_, _, e) in &self.G[i] {
+                    if self.B[e] == 0 {
+                        continue;
+                    }
+                    let mut uf = UnionFind::new(*N);
+                    self.B[e] = 0;
+                    for (j, &b) in self.B.iter().enumerate() {
+                        if b == 1 {
+                            let (u, v, _) = UVW[j];
+                            uf.unite(u, v);
+                        }
+                    }
+                    if uf.get_union_size(i) != 1 {
+                        self.B[e] = 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -260,7 +312,8 @@ impl Solver {
 
         let mut state = State::new();
         state.binary_search_power();
-        state.kruskal();
+        // state.kruskal();
+        state.dijkstra();
 
         // #[allow(unused_mut, unused_assignments)]
         // let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
