@@ -195,6 +195,34 @@ impl State {
             G,
         }
     }
+    fn greedy(&mut self) {
+        self.P = vec![0; *N];
+        for &(a, b) in AB.iter() {
+            let mut d_min = INF;
+            let mut d_min_station = 0;
+            for (i, &(x, y)) in XY.iter().enumerate() {
+                let dx = x - a;
+                let dy = y - b;
+                let d = ((dx * dx) as f64 + (dy * dy) as f64).sqrt().ceil() as isize;
+                if d < d_min {
+                    d_min = d;
+                    d_min_station = i;
+                }
+            }
+            self.P[d_min_station] = max!(self.P[d_min_station], d_min);
+        }
+        self.covered_cnt = vec![0; *K];
+        for (i, &(x, y)) in XY.iter().enumerate() {
+            for (j, &(a, b)) in AB.iter().enumerate() {
+                let dx = x - a;
+                let dy = y - b;
+                let d = ((dx * dx) as f64 + (dy * dy) as f64).sqrt().ceil() as isize;
+                if d <= self.P[i] {
+                    self.covered_cnt[j] += 1;
+                }
+            }
+        }
+    }
     fn update_covered_cnt(&mut self, station: usize, power: isize) {
         let before_power = self.P[station];
         for (home, d) in self.dist_from_station_to_home[station].iter().enumerate() {
@@ -251,6 +279,29 @@ impl State {
                 self.B[i] = 1;
             } else {
                 self.B[i] = 0;
+            }
+        }
+        for _ in 0..100 {
+            for i in 1..*N {
+                if self.P[i] != 0 {
+                    continue;
+                }
+                for &(_, _, e) in &self.G[i] {
+                    if self.B[e] == 0 {
+                        continue;
+                    }
+                    let mut uf = UnionFind::new(*N);
+                    self.B[e] = 0;
+                    for (j, &b) in self.B.iter().enumerate() {
+                        if b == 1 {
+                            let (u, v, _) = UVW[j];
+                            uf.unite(u, v);
+                        }
+                    }
+                    if uf.get_union_size(i) != 1 {
+                        self.B[e] = 1;
+                    }
+                }
             }
         }
     }
@@ -320,12 +371,12 @@ impl Solver {
         let time_keeper = TimeKeeper::new(time_limit);
 
         let mut state = State::new();
-        
 
+        state.greedy();
         // state.binary_search_power();
 
         while !time_keeper.isTimeOver() {
-            state.hill_climbing(100);
+            state.hill_climbing(10);
         }
 
         state.kruskal();
