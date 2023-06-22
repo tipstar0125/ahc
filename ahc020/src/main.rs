@@ -305,6 +305,68 @@ impl State {
             }
         }
     }
+    fn partial_kruskal(&mut self) {
+        let mut WUV: Vec<_> = UVW
+            .iter()
+            .zip(0..)
+            .map(|((u, v, w), i)| (w, u, v, i))
+            .collect();
+        WUV.sort();
+        let mut stations = vec![];
+        for i in 0..*N {
+            if self.P[i] > 0 {
+                stations.push(i);
+            }
+        }
+        let station_to_node_map: BTreeMap<usize, usize> = stations
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, x)| (x, i))
+            .collect();
+
+        let mut uf = UnionFind::new(stations.len());
+        for &(_w, u, v, i) in &WUV {
+            if stations.contains(u)
+                && stations.contains(v)
+                && !uf.is_same(station_to_node_map[u], station_to_node_map[v])
+            {
+                uf.unite(station_to_node_map[u], station_to_node_map[v]);
+                self.B[i] = 1;
+            } else {
+                self.B[i] = 0;
+            }
+        }
+        if uf.get_size() != 1 {
+            eprintln!("not partial kruskal");
+            self.B = vec![0; *M];
+            self.kruskal();
+        } else {
+            for _ in 0..100 {
+                for i in 1..*N {
+                    if self.P[i] != 0 {
+                        continue;
+                    }
+                    for &(_, _, e) in &self.G[i] {
+                        if self.B[e] == 0 {
+                            continue;
+                        }
+                        let mut uf = UnionFind::new(*N);
+                        self.B[e] = 0;
+                        for (j, &b) in self.B.iter().enumerate() {
+                            if b == 1 {
+                                let (u, v, _) = UVW[j];
+                                uf.unite(u, v);
+                            }
+                        }
+                        if uf.get_union_size(i) != 1 {
+                            self.B[e] = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
     fn dijkstra(&mut self) {
         self.B = vec![0; *M]; // initialize all off
         let mut d = vec![INF; *N];
@@ -379,7 +441,8 @@ impl Solver {
             state.hill_climbing(10);
         }
 
-        state.kruskal();
+        // state.kruskal();
+        state.partial_kruskal();
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
