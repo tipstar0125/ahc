@@ -12,7 +12,6 @@ use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque},
     sync::BarrierWaitResult,
-    time,
 };
 
 use itertools::Itertools;
@@ -127,53 +126,48 @@ impl TimeKeeper {
 #[derive(Debug, Clone)]
 struct State {
     B: [[i16; N]; N],
-    ascending_locations: Vec<(usize, usize)>,
     turn: usize,
 }
 
 impl State {
     fn new(B: [[i16; N]; N]) -> Self {
-        let mut ascending_locations = vec![(0, 0); N * (N + 1) / 2];
-        for i in 0..N {
-            for j in 0..i + 1 {
-                ascending_locations[B[i][j] as usize] = (i, j);
-            }
-        }
-        State {
-            B,
-            ascending_locations,
-            turn: 0,
-        }
+        State { B, turn: 0 }
     }
     fn is_done(&self) -> bool {
         self.turn >= MAX
     }
-    fn check_and_get_swap_index(&self, pos: (usize, usize)) -> Option<(usize, usize)> {
-        let (x, y) = pos;
-        if x == 0 {
-            return None;
+    fn get_legal_action(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
+        let mut actions = vec![];
+        if x + 1 < N {
+            actions.push((x + 1, y));
+            actions.push((x + 1, y + 1));
         }
-        if x != 0 && self.B[x - 1][y] != -1 && self.B[x][y] < self.B[x - 1][y] {
-            return Some((x - 1, y));
+        if x != 0 && self.B[x - 1][y] != -1 {
+            actions.push((x - 1, y));
         }
-        if x != 0 && y != 0 && self.B[x][y] < self.B[x - 1][y - 1] {
-            return Some((x - 1, y - 1));
+        if x != 0 && y != 0 {
+            actions.push((x - 1, y - 1));
         }
-        None
+        if y != 0 {
+            actions.push((x, y - 1));
+        }
+        if self.B[x][y + 1] != -1 {
+            actions.push((x, y + 1));
+        }
+        actions
     }
-    fn swap(&mut self, pos0: (usize, usize), pos1: (usize, usize)) {
-        let (x0, y0) = pos0;
-        let (x1, y1) = pos1;
+    fn swap(&mut self, x0: usize, y0: usize, x1: usize, y1: usize) {
         let tmp = self.B[x0][y0];
         self.B[x0][y0] = self.B[x1][y1];
         self.B[x1][y1] = tmp;
-        self.ascending_locations[self.B[x0][y0] as usize] = (x0, y0);
-        self.ascending_locations[self.B[x1][y1] as usize] = (x1, y1);
     }
     fn count_error(&self) -> usize {
         let mut cnt = 0;
         for i in 0..N - 1 {
-            for j in 0..i + 1 {
+            for j in 0..N {
+                if self.B[i][j] == -1 {
+                    break;
+                }
                 let b = self.B[i][j];
                 if b > self.B[i + 1][j] || b > self.B[i + 1][j + 1] {
                     cnt += 1;
@@ -200,20 +194,48 @@ impl Solver {
         let time_limit = 1.9;
         let time_keeper = TimeKeeper::new(time_limit);
 
-        let mut state = State::new(B);
+        let state = State::new(B);
         let mut ans = vec![];
+        let mut cnt = 0;
 
-        while !time_keeper.isTimeOver() && !state.is_done() && state.count_error() != 0 {
-            for i in 0..N * (N + 1) / 2 {
-                if let Some(pos1) = state.check_and_get_swap_index(state.ascending_locations[i]) {
-                    let pos0 = state.ascending_locations[i];
-                    state.swap(pos0, pos1);
-                    ans.push((pos0, pos1));
-                    state.turn += 1;
-                    break;
+        let mut best_turn = INF;
+
+        while !time_keeper.isTimeOver() && !state.is_done() {
+            cnt += 1;
+            let mut actions = vec![];
+            let mut num = 0;
+            let mut next_state = state.clone();
+            while !next_state.is_done() {
+                let x = rnd::gen_range(0, N - 1);
+                let y = rnd::gen_range(0, x + 1);
+                assert!(next_state.B[x][y] != -1);
+
+                let b = next_state.B[x][y];
+                if b > next_state.B[x + 1][y] {
+                    next_state.B[x][y] = next_state.B[x + 1][y];
+                    next_state.B[x + 1][y] = b;
+                    next_state.turn += 1;
+                    actions.push((x, y, x + 1, y));
+                } else if b > next_state.B[x + 1][y + 1] {
+                    next_state.B[x][y] = next_state.B[x + 1][y + 1];
+                    next_state.B[x + 1][y + 1] = b;
+                    next_state.turn += 1;
+                    actions.push((x, y, x + 1, y + 1));
+                }
+                num += 1;
+                if num == 2500 {
+                    num = 0;
+                    if next_state.count_error() == 0 {
+                        break;
+                    }
                 }
             }
+            if best_turn > next_state.turn {
+                best_turn = next_state.turn;
+                ans = actions;
+            }
         }
+        eprintln!("cnt: {}", cnt);
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
@@ -225,8 +247,8 @@ impl Solver {
         eprintln!("Elapsed time: {}sec", elapsed_time);
 
         println!("{}", ans.len());
-        for (pos0, pos1) in ans {
-            println!("{} {} {} {}", pos0.0, pos0.1, pos1.0, pos1.1);
+        for row in ans {
+            println!("{} {} {} {}", row.0, row.1, row.2, row.3);
         }
     }
 }
@@ -243,6 +265,83 @@ macro_rules! min {
     ($x: expr) => ($x);
     ($x: expr, $( $y: expr ),+) => {
         std::cmp::min($x, min!($( $y ),+))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct UnionFind {
+    parent: Vec<isize>,
+    roots: BTreeSet<usize>,
+    size: usize,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        let mut roots = BTreeSet::new();
+        for i in 0..n {
+            roots.insert(i);
+        }
+        UnionFind {
+            parent: vec![-1; n],
+            roots,
+            size: n,
+        }
+    }
+    fn find(&mut self, x: usize) -> usize {
+        if self.parent[x] < 0 {
+            return x;
+        }
+        let root = self.find(self.parent[x] as usize);
+        self.parent[x] = root as isize;
+        root
+    }
+    fn unite(&mut self, x: usize, y: usize) -> Option<(usize, usize)> {
+        let root_x = self.find(x);
+        let root_y = self.find(y);
+        if root_x == root_y {
+            return None;
+        }
+        let size_x = -self.parent[root_x];
+        let size_y = -self.parent[root_y];
+        self.size -= 1;
+        if size_x >= size_y {
+            self.parent[root_x] -= size_y;
+            self.parent[root_y] = root_x as isize;
+            self.roots.remove(&root_y);
+            Some((root_x, root_y))
+        } else {
+            self.parent[root_y] -= size_x;
+            self.parent[root_x] = root_y as isize;
+            self.roots.remove(&root_x);
+            Some((root_y, root_x))
+        }
+    }
+    fn is_same(&mut self, x: usize, y: usize) -> bool {
+        self.find(x) == self.find(y)
+    }
+    fn is_root(&mut self, x: usize) -> bool {
+        self.find(x) == x
+    }
+    fn get_union_size(&mut self, x: usize) -> usize {
+        let root = self.find(x);
+        -self.parent[root] as usize
+    }
+    fn get_size(&self) -> usize {
+        self.size
+    }
+    fn members(&mut self, x: usize) -> Vec<usize> {
+        let root = self.find(x);
+        (0..self.parent.len())
+            .filter(|i| self.find(*i) == root)
+            .collect::<Vec<usize>>()
+    }
+    fn all_group_members(&mut self) -> BTreeMap<usize, Vec<usize>> {
+        let mut groups_map: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for x in 0..self.parent.len() {
+            let r = self.find(x);
+            groups_map.entry(r).or_default().push(x);
+        }
+        groups_map
     }
 }
 
