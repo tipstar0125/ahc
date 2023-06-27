@@ -153,13 +153,20 @@ impl State {
         if x == 0 {
             return None;
         }
+        let mut v = vec![];
         if x != 0 && self.B[x - 1][y] != -1 && self.B[x][y] < self.B[x - 1][y] {
-            return Some((x - 1, y));
+            v.push((self.B[x - 1][y] - self.B[x][y], (x - 1, y)));
         }
         if x != 0 && y != 0 && self.B[x][y] < self.B[x - 1][y - 1] {
-            return Some((x - 1, y - 1));
+            v.push((self.B[x - 1][y - 1] - self.B[x][y], (x - 1, y - 1)));
         }
-        None
+        v.sort();
+        v.reverse();
+        if v.is_empty() || v[0].0 < 0 {
+            return None;
+        } else {
+            return Some(v[0].1);
+        }
     }
     fn swap(&mut self, pos0: (usize, usize), pos1: (usize, usize)) {
         let (x0, y0) = pos0;
