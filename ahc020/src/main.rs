@@ -386,11 +386,6 @@ impl State {
                 self.B[i] = 0;
             }
         }
-
-        let line_cost = (0..*M)
-            .map(|i| self.B[i] as isize * UVW[i].2)
-            .sum::<isize>();
-        eprintln!("Line cost after kruskal: {}", line_cost);
     }
     fn partial_kruskal(&mut self) {
         let mut WUV: Vec<_> = UVW
@@ -429,10 +424,6 @@ impl State {
             self.B = vec![0; *M];
             self.kruskal();
         }
-        let line_cost = (0..*M)
-            .map(|i| self.B[i] as isize * UVW[i].2)
-            .sum::<isize>();
-        eprintln!("Line cost after partial kruskal: {}", line_cost);
     }
     fn disconnect_no_power_station(&mut self) {
         for _ in 0..100 {
@@ -523,7 +514,7 @@ impl Solver {
         let start = std::time::Instant::now();
         let time_limit = 1.8;
         let time_keeper = TimeKeeper::new(time_limit);
-        rnd::init(10);
+        rnd::init(0);
 
         let mut state = State::new();
 
@@ -531,7 +522,7 @@ impl Solver {
         // state.greedy_cost_min();
 
         // state.hill_climbing(10, &time_keeper);
-        state.annealing(10, &time_keeper, time_limit, 200.0, 1.0);
+        state.annealing(500, &time_keeper, time_limit, 20000.0, 10.0);
 
         let mut state1 = state.clone();
         let mut state2 = state.clone();
@@ -551,6 +542,7 @@ impl Solver {
 
         let score = state.get_cost_and_score().0;
         eprintln!("Score: {}", score);
+        assert!(state.cover_home());
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
