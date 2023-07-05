@@ -19,6 +19,7 @@ use petgraph::visit::Time;
 use proconio::{
     fastout, input,
     marker::{Chars, Usize1},
+    source::line,
 };
 
 const INF: isize = 1 << 60;
@@ -196,6 +197,15 @@ impl State {
             G,
         }
     }
+    fn get_cost_and_score(&self) -> (isize, isize, isize) {
+        let power_cost = self.P.iter().map(|x| x * x).sum::<isize>();
+        let line_cost = (0..*M)
+            .map(|i| self.B[i] as isize * UVW[i].2)
+            .sum::<isize>();
+        let S = power_cost + line_cost;
+        let score = (1e6 * (1.0 + 1e8 / (S as f64 + 1e7))).round() as isize;
+        (score, power_cost, line_cost)
+    }
     fn greedy_dist_min(&mut self) {
         self.P = vec![0; *N];
         // 各家について、最も近い放送局を探して、電波強度をそれに合わせる貪欲
@@ -213,10 +223,6 @@ impl State {
             }
             self.P[d_min_station] = max!(self.P[d_min_station], d_min);
         }
-        let num_zero = self.P.iter().filter(|&&x| x == 0).count();
-        let power_cost = self.P.iter().map(|x| x * x).sum::<isize>();
-        eprintln!("Power zero num by greedy: {}", num_zero);
-        eprintln!("Power cost by greedy: {}", power_cost);
         // 各家がカバーされている数を求める
         // 貪欲による初期解生成後、山登りの更新で使用
         self.covered_cnt = vec![0; *K];
@@ -250,10 +256,6 @@ impl State {
             }
             self.P[cost_min_station] = max!(self.P[cost_min_station], d_min);
         }
-        let num_zero = self.P.iter().filter(|&&x| x == 0).count();
-        let power_cost = self.P.iter().map(|x| x * x).sum::<isize>();
-        eprintln!("Power zero num by greedy: {}", num_zero);
-        eprintln!("Power cost by greedy: {}", power_cost);
         // 各家がカバーされている数を求める
         // 貪欲による初期解生成後、山登りの更新で使用
         self.covered_cnt = vec![0; *K];
@@ -318,6 +320,50 @@ impl State {
             // カバーできていなければ、不採用として、元に戻す
             if !self.cover_home() {
                 self.update_covered_cnt(station, before_power);
+            }
+        }
+    }
+    fn annealing(
+        &mut self,
+        delta: usize,
+        time_keeper: &TimeKeeper,
+        time_limit: f64,
+        start_temp: f64,
+        end_temp: f64,
+    ) {
+        let start_time = time_keeper.get_time();
+        let time_limit = time_limit - start_time;
+        let mut current_cost = self.P.iter().map(|x| x * x).sum::<isize>();
+        eprintln!("Annealing start time: {}", start_time);
+        while !time_keeper.isTimeOver() {
+            let station = rnd::gen_range(0, *N);
+            let before_power = self.P[station];
+            if before_power == 0 {
+                continue;
+            }
+            if rnd::gen_bool() {
+                // 電波強度を小さくした場合
+                let power = max!(0, before_power - rnd::gen_range(1, delta) as isize);
+                self.update_covered_cnt(station, power);
+                // カバーできていなければ、不採用として、元に戻す
+                if !self.cover_home() {
+                    self.update_covered_cnt(station, before_power);
+                } else {
+                    current_cost += power * power - before_power * before_power;
+                }
+            } else {
+                // 電波強度を大きくした場合
+                let power = min!(P_MAX, before_power + rnd::gen_range(1, delta) as isize);
+                let new_cost = current_cost + power * power - before_power * before_power;
+                let T = start_temp
+                    + (end_temp - start_temp)
+                        * ((time_keeper.get_time() - start_time) / time_limit);
+                // current_score >= new_score => current_score - new_score >= 0 => good
+                let prob = ((current_cost as f64 - new_cost as f64) / T).exp();
+                if rnd::gen_float() < prob {
+                    self.update_covered_cnt(station, power);
+                    current_cost = new_cost;
+                }
             }
         }
     }
@@ -481,25 +527,27 @@ impl Solver {
         state.greedy_dist_min();
         // state.greedy_cost_min();
 
-        state.hill_climbing(10, &time_keeper);
+        // state.hill_climbing(10, &time_keeper);
+        state.annealing(10, &time_keeper, time_limit, 200.0, 1.0);
 
-        let num_zero = state.P.iter().filter(|&&x| x == 0).count();
-        let power_cost = state.P.iter().map(|x| x * x).sum::<isize>();
-        eprintln!("Power zero num after hill climbing: {}", num_zero);
-        eprintln!("Power cost after hill climbing: {}", power_cost);
+        let mut state1 = state.clone();
+        let mut state2 = state.clone();
 
-        state.kruskal();
-        // state.partial_kruskal();
-        state.disconnect_no_power_station();
+        state1.kruskal();
+        state1.disconnect_no_power_station();
+        state2.partial_kruskal();
+        state2.disconnect_no_power_station();
 
-        let line_cost = (0..*M)
-            .map(|i| state.B[i] as isize * UVW[i].2)
-            .sum::<isize>();
-        eprintln!("Line cost: {}", line_cost);
+        let score1 = state1.get_cost_and_score().0;
+        let score2 = state2.get_cost_and_score().0;
+        if score1 > score2 {
+            state = state1;
+        } else {
+            state = state2;
+        }
 
-        let S = power_cost + line_cost;
-        let point = (1e6 * (1.0 + 1e8 / (S as f64 + 1e7))).round() as usize;
-        eprintln!("Point: {}", point);
+        let score = state.get_cost_and_score().0;
+        eprintln!("Score: {}", score);
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
