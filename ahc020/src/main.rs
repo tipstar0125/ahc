@@ -15,6 +15,7 @@ use std::{
 
 use itertools::Itertools;
 use num_traits::Pow;
+use petgraph::visit::Time;
 use proconio::{
     fastout, input,
     marker::{Chars, Usize1},
@@ -307,15 +308,17 @@ impl State {
             self.update_covered_cnt(i, r);
         }
     }
-    fn hill_climbing(&mut self, delta: usize) {
+    fn hill_climbing(&mut self, delta: usize, time_keeper: &TimeKeeper) {
         // 少し電波強度を減らして、全ての家をカバーできれば採用
-        let station = rnd::gen_range(0, *N);
-        let before_power = self.P[station];
-        let power = max!(0, before_power - rnd::gen_range(1, delta) as isize);
-        self.update_covered_cnt(station, power);
-        // カバーできていなければ、不採用として、元に戻す
-        if !self.cover_home() {
-            self.update_covered_cnt(station, before_power);
+        while !time_keeper.isTimeOver() {
+            let station = rnd::gen_range(0, *N);
+            let before_power = self.P[station];
+            let power = max!(0, before_power - rnd::gen_range(1, delta) as isize);
+            self.update_covered_cnt(station, power);
+            // カバーできていなければ、不採用として、元に戻す
+            if !self.cover_home() {
+                self.update_covered_cnt(station, before_power);
+            }
         }
     }
     fn kruskal(&mut self) {
@@ -478,9 +481,8 @@ impl Solver {
         state.greedy_dist_min();
         // state.greedy_cost_min();
 
-        while !time_keeper.isTimeOver() {
-            state.hill_climbing(10);
-        }
+        state.hill_climbing(10, &time_keeper);
+
         let num_zero = state.P.iter().filter(|&&x| x == 0).count();
         let power_cost = state.P.iter().map(|x| x * x).sum::<isize>();
         eprintln!("Power zero num after hill climbing: {}", num_zero);
