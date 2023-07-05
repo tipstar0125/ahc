@@ -12,6 +12,7 @@ use std::{
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque},
     sync::BarrierWaitResult,
+    time,
 };
 
 use itertools::Itertools;
@@ -126,12 +127,23 @@ impl TimeKeeper {
 #[derive(Debug, Clone)]
 struct State {
     B: [[i16; N]; N],
+    ascending_locations: Vec<(usize, usize)>,
     turn: usize,
 }
 
 impl State {
     fn new(B: [[i16; N]; N]) -> Self {
-        State { B, turn: 0 }
+        let mut ascending_locations = vec![(0, 0); N * (N + 1) / 2];
+        for i in 0..N {
+            for j in 0..i + 1 {
+                ascending_locations[B[i][j] as usize] = (i, j);
+            }
+        }
+        State {
+            B,
+            ascending_locations,
+            turn: 0,
+        }
     }
     fn is_done(&self) -> bool {
         self.turn >= MAX
@@ -162,6 +174,8 @@ impl State {
         let tmp = self.B[x0][y0];
         self.B[x0][y0] = self.B[x1][y1];
         self.B[x1][y1] = tmp;
+        self.ascending_locations[self.B[x0][y0] as usize] = (x0, y0);
+        self.ascending_locations[self.B[x1][y1] as usize] = (x1, y1);
     }
     fn count_error(&self) -> usize {
         let mut cnt = 0;
@@ -193,42 +207,20 @@ impl Solver {
         let time_limit = 1.9;
         let time_keeper = TimeKeeper::new(time_limit);
 
-        let state = State::new(B);
+        let mut state = State::new(B);
         let mut ans = vec![];
-        let mut cnt = 0;
 
-        let mut best_turn = INF;
-
-        while !time_keeper.isTimeOver() && !state.is_done() {
-            cnt += 1;
-            let mut actions = vec![];
-            let mut num = 0;
-            let mut next_state = state.clone();
-            while !next_state.is_done() {
-                let x = rnd::gen_range(0, N);
-                let y = rnd::gen_range(0, x + 1);
-                let pos0 = (x, y);
-
-                if let Some(pos1) = next_state.check_and_get_swap_index(pos0) {
-                    next_state.swap(pos0, pos1);
-                    actions.push((pos0, pos1));
-                    next_state.turn += 1;
+        while !time_keeper.isTimeOver() && !state.is_done() && state.count_error() != 0 {
+            for i in 0..N * (N + 1) / 2 {
+                if let Some(pos1) = state.check_and_get_swap_index(state.ascending_locations[i]) {
+                    let pos0 = state.ascending_locations[i];
+                    state.swap(pos0, pos1);
+                    ans.push((pos0, pos1));
+                    state.turn += 1;
+                    break;
                 }
-                num += 1;
-                if num == 2000 {
-                    num = 0;
-                    if next_state.count_error() == 0 {
-                        break;
-                    }
-                }
-            }
-
-            if best_turn > next_state.turn {
-                best_turn = next_state.turn;
-                ans = actions;
             }
         }
-        eprintln!("cnt: {}", cnt);
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;

@@ -136,29 +136,27 @@ impl State {
     fn is_done(&self) -> bool {
         self.turn >= MAX
     }
-    fn check_and_get_swap_index(&self, pos: (usize, usize)) -> Option<(usize, usize)> {
-        let (x, y) = pos;
-        if x == 0 {
-            return None;
+    fn get_legal_action(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
+        let mut actions = vec![];
+        if x + 1 < N {
+            actions.push((x + 1, y));
+            actions.push((x + 1, y + 1));
         }
-        let mut v = vec![];
-        if x != 0 && self.B[x - 1][y] != -1 && self.B[x][y] < self.B[x - 1][y] {
-            v.push((self.B[x - 1][y] - self.B[x][y], (x - 1, y)));
+        if x != 0 && self.B[x - 1][y] != -1 {
+            actions.push((x - 1, y));
         }
-        if x != 0 && y != 0 && self.B[x][y] < self.B[x - 1][y - 1] {
-            v.push((self.B[x - 1][y - 1] - self.B[x][y], (x - 1, y - 1)));
+        if x != 0 && y != 0 {
+            actions.push((x - 1, y - 1));
         }
-        v.sort();
-        v.reverse();
-        if v.is_empty() || v[0].0 < 0 {
-            return None;
-        } else {
-            return Some(v[0].1);
+        if y != 0 {
+            actions.push((x, y - 1));
         }
+        if self.B[x][y + 1] != -1 {
+            actions.push((x, y + 1));
+        }
+        actions
     }
-    fn swap(&mut self, pos0: (usize, usize), pos1: (usize, usize)) {
-        let (x0, y0) = pos0;
-        let (x1, y1) = pos1;
+    fn swap(&mut self, x0: usize, y0: usize, x1: usize, y1: usize) {
         let tmp = self.B[x0][y0];
         self.B[x0][y0] = self.B[x1][y1];
         self.B[x1][y1] = tmp;
@@ -166,7 +164,10 @@ impl State {
     fn count_error(&self) -> usize {
         let mut cnt = 0;
         for i in 0..N - 1 {
-            for j in 0..i + 1 {
+            for j in 0..N {
+                if self.B[i][j] == -1 {
+                    break;
+                }
                 let b = self.B[i][j];
                 if b > self.B[i + 1][j] || b > self.B[i + 1][j + 1] {
                     cnt += 1;
@@ -205,24 +206,30 @@ impl Solver {
             let mut num = 0;
             let mut next_state = state.clone();
             while !next_state.is_done() {
-                let x = rnd::gen_range(0, N);
+                let x = rnd::gen_range(0, N - 1);
                 let y = rnd::gen_range(0, x + 1);
-                let pos0 = (x, y);
+                assert!(next_state.B[x][y] != -1);
 
-                if let Some(pos1) = next_state.check_and_get_swap_index(pos0) {
-                    next_state.swap(pos0, pos1);
-                    actions.push((pos0, pos1));
+                let b = next_state.B[x][y];
+                if b > next_state.B[x + 1][y] {
+                    next_state.B[x][y] = next_state.B[x + 1][y];
+                    next_state.B[x + 1][y] = b;
                     next_state.turn += 1;
+                    actions.push((x, y, x + 1, y));
+                } else if b > next_state.B[x + 1][y + 1] {
+                    next_state.B[x][y] = next_state.B[x + 1][y + 1];
+                    next_state.B[x + 1][y + 1] = b;
+                    next_state.turn += 1;
+                    actions.push((x, y, x + 1, y + 1));
                 }
                 num += 1;
-                if num == 2000 {
+                if num == 2500 {
                     num = 0;
                     if next_state.count_error() == 0 {
                         break;
                     }
                 }
             }
-
             if best_turn > next_state.turn {
                 best_turn = next_state.turn;
                 ans = actions;
@@ -240,8 +247,8 @@ impl Solver {
         eprintln!("Elapsed time: {}sec", elapsed_time);
 
         println!("{}", ans.len());
-        for (pos0, pos1) in ans {
-            println!("{} {} {} {}", pos0.0, pos0.1, pos1.0, pos1.1);
+        for row in ans {
+            println!("{} {} {} {}", row.0, row.1, row.2, row.3);
         }
     }
 }
@@ -258,6 +265,83 @@ macro_rules! min {
     ($x: expr) => ($x);
     ($x: expr, $( $y: expr ),+) => {
         std::cmp::min($x, min!($( $y ),+))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct UnionFind {
+    parent: Vec<isize>,
+    roots: BTreeSet<usize>,
+    size: usize,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        let mut roots = BTreeSet::new();
+        for i in 0..n {
+            roots.insert(i);
+        }
+        UnionFind {
+            parent: vec![-1; n],
+            roots,
+            size: n,
+        }
+    }
+    fn find(&mut self, x: usize) -> usize {
+        if self.parent[x] < 0 {
+            return x;
+        }
+        let root = self.find(self.parent[x] as usize);
+        self.parent[x] = root as isize;
+        root
+    }
+    fn unite(&mut self, x: usize, y: usize) -> Option<(usize, usize)> {
+        let root_x = self.find(x);
+        let root_y = self.find(y);
+        if root_x == root_y {
+            return None;
+        }
+        let size_x = -self.parent[root_x];
+        let size_y = -self.parent[root_y];
+        self.size -= 1;
+        if size_x >= size_y {
+            self.parent[root_x] -= size_y;
+            self.parent[root_y] = root_x as isize;
+            self.roots.remove(&root_y);
+            Some((root_x, root_y))
+        } else {
+            self.parent[root_y] -= size_x;
+            self.parent[root_x] = root_y as isize;
+            self.roots.remove(&root_x);
+            Some((root_y, root_x))
+        }
+    }
+    fn is_same(&mut self, x: usize, y: usize) -> bool {
+        self.find(x) == self.find(y)
+    }
+    fn is_root(&mut self, x: usize) -> bool {
+        self.find(x) == x
+    }
+    fn get_union_size(&mut self, x: usize) -> usize {
+        let root = self.find(x);
+        -self.parent[root] as usize
+    }
+    fn get_size(&self) -> usize {
+        self.size
+    }
+    fn members(&mut self, x: usize) -> Vec<usize> {
+        let root = self.find(x);
+        (0..self.parent.len())
+            .filter(|i| self.find(*i) == root)
+            .collect::<Vec<usize>>()
+    }
+    fn all_group_members(&mut self) -> BTreeMap<usize, Vec<usize>> {
+        let mut groups_map: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for x in 0..self.parent.len() {
+            let r = self.find(x);
+            groups_map.entry(r).or_default().push(x);
+        }
+        groups_map
     }
 }
 
