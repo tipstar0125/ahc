@@ -360,7 +360,6 @@ impl State {
                 let T = start_temp
                     + (end_temp - start_temp)
                         * ((time_keeper.get_time() - start_time) / time_limit);
-                // current_score >= new_score => current_score - new_score >= 0 => good
                 let prob = ((current_cost as f64 - new_cost as f64) / T).exp();
                 if rnd::gen_float() < prob {
                     self.update_covered_cnt(station, power);
