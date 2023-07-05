@@ -334,8 +334,10 @@ impl State {
         let start_time = time_keeper.get_time();
         let time_limit = time_limit - start_time;
         let mut current_cost = self.P.iter().map(|x| x * x).sum::<isize>();
+        let mut cnt = 0;
         eprintln!("Annealing start time: {}", start_time);
         while !time_keeper.isTimeOver() {
+            cnt += 1;
             let station = rnd::gen_range(0, *N);
             let before_power = self.P[station];
             if before_power == 0 {
@@ -366,6 +368,7 @@ impl State {
                 }
             }
         }
+        eprintln!("Annealing count: {}", cnt);
     }
     fn kruskal(&mut self) {
         let mut WUV: Vec<_> = UVW
