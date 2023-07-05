@@ -195,7 +195,7 @@ impl State {
             G,
         }
     }
-    fn greedy(&mut self) {
+    fn greedy_dist_min(&mut self) {
         self.P = vec![0; *N];
         // 各家について、最も近い放送局を探して、電波強度をそれに合わせる貪欲
         for &(a, b) in AB.iter() {
@@ -212,6 +212,10 @@ impl State {
             }
             self.P[d_min_station] = max!(self.P[d_min_station], d_min);
         }
+        let num_zero = self.P.iter().filter(|&&x| x == 0).count();
+        let power_cost = self.P.iter().map(|x| x * x).sum::<isize>();
+        eprintln!("Power zero num by greedy: {}", num_zero);
+        eprintln!("Power cost by greedy: {}", power_cost);
         // 各家がカバーされている数を求める
         // 貪欲による初期解生成後、山登りの更新で使用
         self.covered_cnt = vec![0; *K];
@@ -226,7 +230,7 @@ impl State {
             }
         }
     }
-    fn greedy2(&mut self) {
+    fn greedy_cost_min(&mut self) {
         self.P = vec![0; *N];
         // 各家について、放送局の電波強度をあげて最小コストになる放送局を探して、電波強度をそれに合わせる貪欲
         for &(a, b) in AB.iter() {
@@ -245,6 +249,10 @@ impl State {
             }
             self.P[cost_min_station] = max!(self.P[cost_min_station], d_min);
         }
+        let num_zero = self.P.iter().filter(|&&x| x == 0).count();
+        let power_cost = self.P.iter().map(|x| x * x).sum::<isize>();
+        eprintln!("Power zero num by greedy: {}", num_zero);
+        eprintln!("Power cost by greedy: {}", power_cost);
         // 各家がカバーされている数を求める
         // 貪欲による初期解生成後、山登りの更新で使用
         self.covered_cnt = vec![0; *K];
@@ -326,29 +334,11 @@ impl State {
                 self.B[i] = 0;
             }
         }
-        for _ in 0..100 {
-            for i in 1..*N {
-                if self.P[i] != 0 {
-                    continue;
-                }
-                for &(_, _, e) in &self.G[i] {
-                    if self.B[e] == 0 {
-                        continue;
-                    }
-                    let mut uf = UnionFind::new(*N);
-                    self.B[e] = 0;
-                    for (j, &b) in self.B.iter().enumerate() {
-                        if b == 1 {
-                            let (u, v, _) = UVW[j];
-                            uf.unite(u, v);
-                        }
-                    }
-                    if uf.get_union_size(i) != 1 {
-                        self.B[e] = 1;
-                    }
-                }
-            }
-        }
+
+        let line_cost = (0..*M)
+            .map(|i| self.B[i] as isize * UVW[i].2)
+            .sum::<isize>();
+        eprintln!("Line cost after kruskal: {}", line_cost);
     }
     fn partial_kruskal(&mut self) {
         let mut WUV: Vec<_> = UVW
@@ -386,27 +376,32 @@ impl State {
             eprintln!("not partial kruskal");
             self.B = vec![0; *M];
             self.kruskal();
-        } else {
-            for _ in 0..100 {
-                for i in 1..*N {
-                    if self.P[i] != 0 {
+        }
+        let line_cost = (0..*M)
+            .map(|i| self.B[i] as isize * UVW[i].2)
+            .sum::<isize>();
+        eprintln!("Line cost after partial kruskal: {}", line_cost);
+    }
+    fn disconnect_no_power_station(&mut self) {
+        for _ in 0..100 {
+            for i in 1..*N {
+                if self.P[i] != 0 {
+                    continue;
+                }
+                for &(_, _, e) in &self.G[i] {
+                    if self.B[e] == 0 {
                         continue;
                     }
-                    for &(_, _, e) in &self.G[i] {
-                        if self.B[e] == 0 {
-                            continue;
+                    let mut uf = UnionFind::new(*N);
+                    self.B[e] = 0;
+                    for (j, &b) in self.B.iter().enumerate() {
+                        if b == 1 {
+                            let (u, v, _) = UVW[j];
+                            uf.unite(u, v);
                         }
-                        let mut uf = UnionFind::new(*N);
-                        self.B[e] = 0;
-                        for (j, &b) in self.B.iter().enumerate() {
-                            if b == 1 {
-                                let (u, v, _) = UVW[j];
-                                uf.unite(u, v);
-                            }
-                        }
-                        if uf.get_union_size(i) != 1 {
-                            self.B[e] = 1;
-                        }
+                    }
+                    if uf.get_union_size(i) != 1 {
+                        self.B[e] = 1;
                     }
                 }
             }
@@ -476,18 +471,33 @@ impl Solver {
         let start = std::time::Instant::now();
         let time_limit = 1.8;
         let time_keeper = TimeKeeper::new(time_limit);
+        rnd::init(10);
 
         let mut state = State::new();
 
-        // state.greedy();
-        state.greedy2();
+        state.greedy_dist_min();
+        // state.greedy_cost_min();
 
         while !time_keeper.isTimeOver() {
             state.hill_climbing(10);
         }
+        let num_zero = state.P.iter().filter(|&&x| x == 0).count();
+        let power_cost = state.P.iter().map(|x| x * x).sum::<isize>();
+        eprintln!("Power zero num after hill climbing: {}", num_zero);
+        eprintln!("Power cost after hill climbing: {}", power_cost);
 
         state.kruskal();
         // state.partial_kruskal();
+        state.disconnect_no_power_station();
+
+        let line_cost = (0..*M)
+            .map(|i| state.B[i] as isize * UVW[i].2)
+            .sum::<isize>();
+        eprintln!("Line cost: {}", line_cost);
+
+        let S = power_cost + line_cost;
+        let point = (1e6 * (1.0 + 1e8 / (S as f64 + 1e7))).round() as usize;
+        eprintln!("Point: {}", point);
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
