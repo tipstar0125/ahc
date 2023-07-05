@@ -197,6 +197,7 @@ impl State {
     }
     fn greedy(&mut self) {
         self.P = vec![0; *N];
+        // 各家について、最も近い放送局を探して、電波強度をそれに合わせる貪欲
         for &(a, b) in AB.iter() {
             let mut d_min = INF;
             let mut d_min_station = 0;
@@ -211,6 +212,41 @@ impl State {
             }
             self.P[d_min_station] = max!(self.P[d_min_station], d_min);
         }
+        // 各家がカバーされている数を求める
+        // 貪欲による初期解生成後、山登りの更新で使用
+        self.covered_cnt = vec![0; *K];
+        for (i, &(x, y)) in XY.iter().enumerate() {
+            for (j, &(a, b)) in AB.iter().enumerate() {
+                let dx = x - a;
+                let dy = y - b;
+                let d = ((dx * dx) as f64 + (dy * dy) as f64).sqrt().ceil() as isize;
+                if d <= self.P[i] {
+                    self.covered_cnt[j] += 1;
+                }
+            }
+        }
+    }
+    fn greedy2(&mut self) {
+        self.P = vec![0; *N];
+        // 各家について、放送局の電波強度をあげて最小コストになる放送局を探して、電波強度をそれに合わせる貪欲
+        for &(a, b) in AB.iter() {
+            let mut d_min = INF;
+            let mut cost_min_station = 0;
+            for (i, &(x, y)) in XY.iter().enumerate() {
+                let dx = x - a;
+                let dy = y - b;
+                let d = ((dx * dx) as f64 + (dy * dy) as f64).sqrt().ceil() as isize;
+                let before_d = self.P[i];
+                let cost = d * d - before_d * before_d;
+                if cost < d_min && d <= P_MAX {
+                    d_min = d;
+                    cost_min_station = i;
+                }
+            }
+            self.P[cost_min_station] = max!(self.P[cost_min_station], d_min);
+        }
+        // 各家がカバーされている数を求める
+        // 貪欲による初期解生成後、山登りの更新で使用
         self.covered_cnt = vec![0; *K];
         for (i, &(x, y)) in XY.iter().enumerate() {
             for (j, &(a, b)) in AB.iter().enumerate() {
@@ -224,6 +260,10 @@ impl State {
         }
     }
     fn update_covered_cnt(&mut self, station: usize, power: isize) {
+        // 放送局の電波強度が更新されたとき、各家がカバーされている数を更新
+        // 更新前と比較して、カバーの状態が変化なければ、何もしない
+        // 電波強度が放送局と家の距離以上になったら、カバーの数をインクリメント
+        // 電波強度が放送局と家の距離より小さくなったら、カバーの数をデクリメント
         let before_power = self.P[station];
         for (home, d) in self.dist_from_station_to_home[station].iter().enumerate() {
             if (*d <= power) == (*d <= before_power) {
@@ -238,9 +278,12 @@ impl State {
         self.P[station] = power;
     }
     fn cover_home(&self) -> bool {
+        // 全ての家について、放送局によってカバーされている数が0よりも大きければ、OK
         self.covered_cnt.iter().all(|&x| x > 0)
     }
     fn binary_search_power(&mut self) {
+        // 各放送局からの電波の強度を0から順番に二分探索
+        // 全ての家がカバーされるギリギリを探す
         for i in 0..*N {
             let mut l = -1;
             let mut r = P_MAX;
@@ -257,10 +300,12 @@ impl State {
         }
     }
     fn hill_climbing(&mut self, delta: usize) {
+        // 少し電波強度を減らして、全ての家をカバーできれば採用
         let station = rnd::gen_range(0, *N);
         let before_power = self.P[station];
         let power = max!(0, before_power - rnd::gen_range(1, delta) as isize);
         self.update_covered_cnt(station, power);
+        // カバーできていなければ、不採用として、元に戻す
         if !self.cover_home() {
             self.update_covered_cnt(station, before_power);
         }
@@ -434,15 +479,15 @@ impl Solver {
 
         let mut state = State::new();
 
-        state.greedy();
-        // state.binary_search_power();
+        // state.greedy();
+        state.greedy2();
 
         while !time_keeper.isTimeOver() {
             state.hill_climbing(10);
         }
 
-        // state.kruskal();
-        state.partial_kruskal();
+        state.kruskal();
+        // state.partial_kruskal();
 
         #[allow(unused_mut, unused_assignments)]
         let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
