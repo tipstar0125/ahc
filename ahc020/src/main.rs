@@ -206,6 +206,10 @@ impl State {
         let score = (1e6 * (1.0 + 1e8 / (S as f64 + 1e7))).round() as isize;
         (score, power_cost, line_cost)
     }
+    fn output(&self) {
+        println!("{}", self.P.iter().join(" "));
+        println!("{}", self.B.iter().join(" "));
+    }
     fn greedy_dist_min(&mut self) {
         self.P = vec![0; *N];
         // 各家について、最も近い放送局を探して、電波強度をそれに合わせる貪欲
@@ -337,6 +341,9 @@ impl State {
         let mut cnt = 0;
         eprintln!("Annealing start time: {}", start_time);
         while !time_keeper.isTimeOver() {
+            if cnt % 10000 == 0 {
+                self.output();
+            }
             cnt += 1;
             let station = rnd::gen_range(0, *N);
             let before_power = self.P[station];
@@ -521,7 +528,7 @@ impl Solver {
         // state.greedy_cost_min();
 
         // state.hill_climbing(10, &time_keeper);
-        state.annealing(500, &time_keeper, time_limit, 20000.0, 10.0);
+        state.annealing(30, &time_keeper, time_limit, 20000.0, 10.0);
 
         let mut state1 = state.clone();
         let mut state2 = state.clone();
@@ -552,8 +559,7 @@ impl Solver {
         }
         eprintln!("Elapsed time: {}sec", elapsed_time);
 
-        println!("{}", state.P.iter().join(" "));
-        println!("{}", state.B.iter().join(" "));
+        state.output();
     }
 }
 
