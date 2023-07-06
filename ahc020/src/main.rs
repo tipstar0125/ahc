@@ -315,8 +315,13 @@ impl State {
         }
     }
     fn hill_climbing(&mut self, delta: usize, time_keeper: &TimeKeeper) {
+        let mut cnt = 0;
         // 少し電波強度を減らして、全ての家をカバーできれば採用
         while !time_keeper.isTimeOver() {
+            if cnt % 10000 == 0 {
+                self.output();
+            }
+            cnt += 1;
             let station = rnd::gen_range(0, *N);
             let before_power = self.P[station];
             let power = max!(0, before_power - rnd::gen_range(1, delta) as isize);
