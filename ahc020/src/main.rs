@@ -318,8 +318,11 @@ impl State {
         let mut cnt = 0;
         // 少し電波強度を減らして、全ての家をカバーできれば採用
         while !time_keeper.isTimeOver() {
-            if cnt % 10000 == 0 {
-                self.output();
+            #[cfg(feature = "local")]
+            {
+                if cnt % 10000 == 0 {
+                    self.output();
+                }
             }
             cnt += 1;
             let station = rnd::gen_range(0, *N);
@@ -346,8 +349,11 @@ impl State {
         let mut cnt = 0;
         eprintln!("Annealing start time: {}", start_time);
         while !time_keeper.isTimeOver() {
-            if cnt % 10000 == 0 {
-                self.output();
+            #[cfg(feature = "local")]
+            {
+                if cnt % 10000 == 0 {
+                    self.output();
+                }
             }
             cnt += 1;
             let station = rnd::gen_range(0, *N);
