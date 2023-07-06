@@ -539,6 +539,7 @@ impl Solver {
         // state.greedy_cost_min();
 
         // state.hill_climbing(10, &time_keeper);
+        // state.annealing(10, &time_keeper, time_limit, 200.0, 1.0); // 440917741 P
         state.annealing(30, &time_keeper, time_limit, 20000.0, 10.0);
 
         let mut state1 = state.clone();
