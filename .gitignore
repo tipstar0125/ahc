@@ -1,5 +1,9 @@
 target/
 out
 in
+output.txt
+input.txt
 out/
 in/
+*.exe
+tools/
