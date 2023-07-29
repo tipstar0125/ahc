@@ -114,18 +114,16 @@ impl TimeKeeper {
 const H: usize = 60;
 const W: usize = 25;
 const TURN: usize = 1000;
-const NG: isize = -(1 << 60);
-const NO_ENEMY: isize = -((1 << 60) + 1);
-const CANNOT_BEAT: isize = -((1 << 60) + 2);
-const COLLISION: isize = -((1 << 60) + 3);
-const THRESHOLD: isize = 300;
+const NG: isize = 1 << 60;
+const NO_ENEMY: isize = (1 << 60) + 1;
+const CANNOT_BEAT: isize = (1 << 60) + 2;
+const COLLISION: isize = (1 << 60) + 3;
 
 #[derive(Debug, Clone)]
 struct State {
     pos: (usize, usize),
     S: usize,
-    score: isize,
-    field: Vec<Vec<(isize, usize, isize)>>, // hp, power, init hp
+    field: Vec<Vec<(isize, usize)>>,
     turn: usize,
 }
 
@@ -134,8 +132,7 @@ impl State {
         State {
             pos: (12, 0),
             S: 0,
-            score: 0,
-            field: vec![vec![(0, 0, 0); W]; H + TURN + 10],
+            field: vec![vec![(0, 0); W]; H + TURN + 10],
             turn: 0,
         }
     }
@@ -146,7 +143,7 @@ impl State {
             let h = v[0] as isize;
             let p = v[1];
             let x = v[2];
-            self.field[y][x] = (h, p, h);
+            self.field[y][x] = (h, p);
         }
     }
     fn get_level(&self) -> isize {
@@ -155,19 +152,17 @@ impl State {
     fn check_front_enemy(&self) -> isize {
         let (now_x, now_y) = self.pos;
         for y in now_y + 1..H + TURN + 10 {
-            if self.field[y][now_x] != (0, 0, 0) {
-                let (h, p, _) = self.field[y][now_x];
+            if self.field[y][now_x] != (0, 0) {
+                let (h, _) = self.field[y][now_x];
                 let dy = y - now_y;
-                let level = self.get_level();
+                let level = (1 + self.S / 100) as isize;
                 let t = (h + level - 1) / level;
                 // t >= 1, dy >= 2
                 // dy = 1 => Game over
                 if dy <= t as usize {
                     return CANNOT_BEAT;
-                } else if level <= THRESHOLD {
-                    return p as isize / t;
                 } else {
-                    return h / t;
+                    return t;
                 }
             }
         }
@@ -176,21 +171,19 @@ impl State {
     fn check_left_enemy(&self, d: usize) -> isize {
         let (now_x, now_y) = self.pos;
         let x = (W + now_x - d) % W;
-        if self.field[now_y + d][x] != (0, 0, 0) {
+        if self.field[now_y + d][x] != (0, 0) {
             return COLLISION;
         }
         for y in now_y + d + 1..H + TURN + 10 {
-            if self.field[y][x] != (0, 0, 0) {
-                let (h, p, _) = self.field[y][x];
+            if self.field[y][x] != (0, 0) {
+                let (h, _) = self.field[y][x];
                 let dy = y - now_y;
                 let level = self.get_level();
                 let t = (h + level - 1) / level;
                 if dy <= t as usize {
                     return CANNOT_BEAT;
-                } else if level <= THRESHOLD {
-                    return p as isize / t;
                 } else {
-                    return h / t;
+                    return t;
                 }
             }
         }
@@ -199,47 +192,37 @@ impl State {
     fn check_right_enemy(&self, d: usize) -> isize {
         let (now_x, now_y) = self.pos;
         let x = (now_x + d) % W;
-        if self.field[now_y + d][x] != (0, 0, 0) {
+        if self.field[now_y + d][x] != (0, 0) {
             return COLLISION;
         }
         for y in now_y + d + 1..H + TURN + 10 {
-            if self.field[y][x] != (0, 0, 0) {
-                let (h, p, _) = self.field[y][x];
+            if self.field[y][x] != (0, 0) {
+                let (h, _) = self.field[y][x];
                 let dy = y - now_y;
                 let level = self.get_level();
                 let t = (h + level - 1) / level;
                 if dy <= t as usize {
                     return CANNOT_BEAT;
-                } else if level <= THRESHOLD {
-                    return p as isize / t;
                 } else {
-                    return h / t;
+                    return t;
                 }
             }
         }
         NO_ENEMY
     }
-    fn check_left_num_enemy(&self, d: usize) -> usize {
+    fn judge_collision_left(&self, d: usize) -> bool {
         let (now_x, now_y) = self.pos;
-        let x = (W + now_x - d) % W;
-        let mut cnt = 0_usize;
-        for y in now_y + d + 1..H + TURN + 10 {
-            if self.field[y][x] != (0, 0, 0) {
-                cnt += 1;
-            }
-        }
-        cnt
+        let level = self.get_level();
+        let is_collision = self.field[now_y + d][(W + now_x - d) % W] != (0, 0);
+        let is_next_turn_collision = self.field[now_y + d + 1][(W + now_x - d) % W].0 > level;
+        is_collision || is_next_turn_collision
     }
-    fn check_right_num_enemy(&self, d: usize) -> usize {
+    fn judge_collision_right(&self, d: usize) -> bool {
         let (now_x, now_y) = self.pos;
-        let x = (now_x + d) % W;
-        let mut cnt = 0_usize;
-        for y in now_y + d + 1..H + TURN + 10 {
-            if self.field[y][x] != (0, 0, 0) {
-                cnt += 1;
-            }
-        }
-        cnt
+        let level = self.get_level();
+        let is_collision = self.field[now_y + d][(now_x + d) % W] != (0, 0);
+        let is_next_turn_collision = self.field[now_y + d + 1][(now_x + d) % W].0 > level;
+        is_collision || is_next_turn_collision
     }
     fn advance(&mut self, action: isize) {
         self.pos.1 += 1;
@@ -252,13 +235,12 @@ impl State {
         let (now_x, now_y) = self.pos;
         let x = now_x;
         for y in now_y + 1..H + TURN + 10 {
-            if self.field[y][x] != (0, 0, 0) {
-                let (h, p, init_hp) = self.field[y][x];
+            if self.field[y][x] != (0, 0) {
+                let (h, p) = self.field[y][x];
                 let level = (1 + self.S / 100) as isize;
                 if h - level <= 0 {
                     self.S += p;
-                    self.score += init_hp;
-                    self.field[y][x] = (0, 0, 0);
+                    self.field[y][x] = (0, 0);
                 } else {
                     self.field[y][x].0 -= level;
                 }
@@ -283,7 +265,6 @@ impl State {
 #[derive(Default)]
 struct Solver {}
 impl Solver {
-    #[allow(clippy::vec_init_then_push)]
     fn solve(&mut self) {
         let mut state = State::new();
 
@@ -300,17 +281,26 @@ impl Solver {
             }
 
             state.update_field(N as usize);
-            let mut v = vec![];
-            v.push((state.check_front_enemy(), 0));
-            v.push((state.check_left_enemy(1), -1));
-            v.push((state.check_right_enemy(1), 1));
-            v.sort();
-            v.reverse();
-            let (_, action) = v[0];
-            state.advance(action);
+            if state.check_front_enemy() < NG
+                || (state.judge_collision_left(1) && state.judge_collision_right(1))
+            {
+                state.advance(0);
+            } else if state.judge_collision_left(1) {
+                state.advance(1);
+            } else if state.judge_collision_right(1) {
+                state.advance(-1);
+            } else {
+                let left = state.check_left_enemy(1);
+                let right = state.check_right_enemy(1);
+                if left == right {
+                    state.advance(1);
+                } else if left < right {
+                    state.advance(-1);
+                } else {
+                    state.advance(1);
+                }
+            }
         }
-        eprintln!("Score: {}", state.score);
-        eprintln!("S: {}", state.S);
     }
 }
 
