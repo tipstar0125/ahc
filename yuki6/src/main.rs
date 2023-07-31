@@ -183,8 +183,55 @@ impl State {
         dist[now_x].0 += 1;
         dist
     }
+    fn bfs2(&self, depth: usize) -> Vec<(usize, isize)> {
+        // (turn, first_action)
+        let (now_x, now_y) = self.pos;
+        let mut dist = vec![vec![(INF, 0); W]; depth + 2];
+        let mut Q = VecDeque::new();
+        Q.push_back((now_x, 0, 2));
+        dist[0][now_x] = (0, 0);
+
+        while let Some((pos, t, a)) = Q.pop_front() {
+            for action in -1..=1 {
+                let next_x = ((W as isize + pos as isize + action) as usize) % W;
+                let next_y = now_y + t + 1;
+                let level = self.get_level();
+                let (h, _, _) = self.field[next_y + 1][next_x];
+                if t > depth || (self.field[next_y][next_x] != (0, 0, 0)) || h > level {
+                    continue;
+                }
+                if dist[t + 1][next_x].0 == INF {
+                    if a == 2 {
+                        dist[t + 1][next_x] = (dist[t][pos].0 + 1, action);
+                    } else {
+                        dist[t + 1][next_x] = (dist[t][pos].0 + 1, a);
+                    }
+                }
+                if a == 2 {
+                    Q.push_back((next_x, t + 1, action));
+                } else {
+                    Q.push_back((next_x, t + 1, a));
+                }
+            }
+        }
+
+        dist[0][now_x].0 += 1;
+        let mut d = vec![(0, 0); W];
+        for j in 0..W {
+            let mut turn = INF;
+            let mut first_action = 0;
+            for i in 0..depth {
+                if dist[i][j].0 < turn {
+                    turn = dist[i][j].0;
+                    first_action = dist[i][j].1;
+                }
+            }
+            d[j] = (turn, first_action);
+        }
+        d
+    }
     fn eval_col(&self) -> isize {
-        let col_turn_and_first_action = self.bfs(8);
+        let col_turn_and_first_action = self.bfs2(8);
         let mut col_eval_result = vec![];
         let (_, now_y) = self.pos;
 
