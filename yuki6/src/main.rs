@@ -231,7 +231,7 @@ impl State {
         d
     }
     fn eval_col(&self) -> isize {
-        let col_turn_and_first_action = self.bfs2(8);
+        let col_turn_and_first_action = self.bfs(9);
         let mut col_eval_result = vec![];
         let (_, now_y) = self.pos;
 
@@ -239,7 +239,8 @@ impl State {
             if col_turn_and_first_action[x].0 == INF {
                 continue;
             }
-            let (turn, first_action) = col_turn_and_first_action[x];
+            let (mut turn, first_action) = col_turn_and_first_action[x];
+            let mut score = 0;
             let next_y = turn + now_y;
             for y in next_y + 1..H + TURN + 10 {
                 if self.field[y][x] != (0, 0, 0) {
@@ -248,15 +249,24 @@ impl State {
                     let level = self.get_level();
                     let t = ((h + level - 1) / level + turn as isize - 1) as usize;
                     if dy > t {
-                        let s = p * 1e6 as usize / t;
-                        col_eval_result.push((s as isize, first_action));
+                        let s = p * 1e6 as usize;
+                        score += s as isize;
+                        turn = t + 1;
                     } else {
-                        col_eval_result.push((CANNOT_BEAT, first_action));
+                        if score == 0 {
+                            col_eval_result.push((CANNOT_BEAT, first_action));
+                        } else {
+                            col_eval_result.push((score / turn as isize, first_action));
+                        }
                         continue 'outer;
                     }
                 }
             }
-            col_eval_result.push((NO_ENEMY, first_action));
+            if score == 0 {
+                col_eval_result.push((NO_ENEMY, first_action));
+            } else {
+                col_eval_result.push((score / turn as isize, first_action));
+            }
         }
         col_eval_result.sort();
         col_eval_result.reverse();
