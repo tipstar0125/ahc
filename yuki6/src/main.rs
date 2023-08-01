@@ -118,6 +118,7 @@ const INF: usize = 1 << 60;
 const NO_ENEMY: isize = -((1 << 60) + 1);
 const CANNOT_BEAT: isize = -((1 << 60) + 2);
 const COLLISION: isize = -((1 << 60) + 3);
+const TARGET_LEVEL: isize = 250;
 
 #[derive(Debug, Clone)]
 struct State {
@@ -231,7 +232,7 @@ impl State {
         d
     }
     fn eval_col(&self) -> isize {
-        let col_turn_and_first_action = self.bfs(9);
+        let col_turn_and_first_action = self.bfs2(9);
         let mut col_eval_result = vec![];
         let (_, now_y) = self.pos;
 
@@ -244,13 +245,13 @@ impl State {
             let next_y = turn + now_y;
             for y in next_y + 1..H + TURN + 10 {
                 if self.field[y][x] != (0, 0, 0) {
-                    let (h, p, _) = self.field[y][x];
+                    let (h, p, init_hp) = self.field[y][x];
                     let dy = y - next_y;
                     let level = self.get_level();
                     let t = ((h + level - 1) / level + turn as isize - 1) as usize;
                     if dy > t {
-                        let s = p * 1e6 as usize;
-                        score += s as isize;
+                        let ratio = min!(1e6 as isize, 1e6 as isize * level / TARGET_LEVEL);
+                        score += p as isize * (1e6 as isize - ratio) + init_hp * ratio;
                         turn = t + 1;
                     } else {
                         if score == 0 {
