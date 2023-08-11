@@ -133,7 +133,7 @@ impl Player {
     }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 struct Enemy {
     hp: isize,
     power: isize,
@@ -154,38 +154,14 @@ impl Enemy {
     }
 }
 
-#[derive(Debug, Clone)]
-struct Field {
-    enemies: Vec<Vec<Option<Enemy>>>,
-}
-
-impl Field {
-    fn new() -> Self {
-        Field {
-            enemies: vec![vec![None; W]; H + TURN + 10],
-        }
-    }
-    fn update(&mut self, n: usize, turn: usize) {
-        let y = H + turn;
-        for _ in 0..n {
-            let v: Vec<isize> = read_vec();
-            let h = v[0];
-            let p = v[1];
-            let x = v[2] as usize;
-            let enemy = Enemy::new(h, p, x, y);
-            self.enemies[y][x] = Some(enemy);
-        }
-    }
-}
-
 #[derive(Debug, Clone, Eq)]
 struct State {
     player: Player,
     S: isize,
     score: isize,
     damage: isize,
-    enemies: [Option<Enemy>; W],
     evaluated_score: isize,
+    enemies: Vec<VecDeque<Enemy>>,
     turn: usize,
     first_action: isize,
     is_dead: bool,
@@ -198,86 +174,78 @@ impl State {
             S: 0,
             score: 0,
             damage: 0,
-            enemies: [None; W],
             evaluated_score: 0,
+            enemies: vec![VecDeque::new(); W],
             turn: 0,
             first_action: 0,
             is_dead: false,
         }
     }
-    fn update_enemy(&mut self, field: &Field) {
+    fn update_enemy(&mut self, n: usize) {
+        let y = H + self.turn;
+        for _ in 0..n {
+            let v: Vec<isize> = read_vec();
+            let h = v[0];
+            let p = v[1];
+            let x = v[2] as usize;
+            let enemy = Enemy::new(h, p, x, y);
+            self.enemies[x].push_back(enemy);
+        }
         for x in 0..W {
-            if let Some(enemy) = self.enemies[x] {
-                if enemy.y == self.turn {
-                    self.enemies[x] = None;
-                }
+            if self.enemies[x].is_empty() {
+                continue;
             }
-            if self.enemies[x].is_none() {
-                for y in self.turn + 1..=self.turn + H {
-                    if let Some(enemy) = field.enemies[y][x] {
-                        self.enemies[x] = Some(enemy);
-                        break;
-                    }
-                }
+            if y - self.enemies[x][0].y == H {
+                self.enemies[x].pop_front();
             }
         }
     }
-    fn advance(&mut self, action: isize, field: &Field, b: bool) {
+    fn get_level(&self) -> isize {
+        1 + self.S / 100
+    }
+    fn advance(&mut self, action: isize) {
         self.player.move_(action);
-        self.attack(field, b);
+        self.attack();
         self.turn += 1;
     }
-    fn attack(&mut self, field: &Field, b: bool) {
-        if let Some(mut enemy) = self.enemies[self.player.x] {
-            let level = self.get_level();
-            if b {
-                eprintln!("{} {} {:?} {} {}", self.turn, enemy.y, self.player, level, self.S);
-            }
-            if enemy.y == self.player.y {
-                self.is_dead = true;
-                return;
-            }
-            if enemy.y == self.player.y + 1 && enemy.hp > level {
-                self.is_dead = true;
-                return;
-            }
-            if enemy.hp <= level {
-                self.score += enemy.init_hp;
-                self.S += enemy.power;
-                self.damage += min!(level, enemy.hp);
-                self.enemies[self.player.x] = None;
-                for y in enemy.y + 1..=self.turn + H {
-                    if let Some(e) = field.enemies[y][self.player.x] {
-                        self.enemies[self.player.x] = Some(e);
-                        return;
-                    }
-                }
-            } else {
-                if b {
-                    eprintln!("{:?}", enemy);
-                }
-                enemy.hp -= level;
-                if b {
-                    eprintln!("{:?}", enemy);
-                }
-                self.enemies[self.player.x] = Some(enemy);
-                self.damage += level;
-            }
+    fn attack(&mut self) {
+        if self.enemies[self.player.x].is_empty() {
+            return;
+        }
+        let level = self.get_level();
+        let enemy = &self.enemies[self.player.x][0];
+        if enemy.y == self.player.y {
+            self.is_dead = true;
+            return;
+        }
+        if enemy.y == self.player.y + 1 && enemy.hp > level {
+            self.is_dead = true;
+            return;
+        }
+        if enemy.hp <= level {
+            self.score += enemy.init_hp;
+            self.S += enemy.power;
+            self.damage += min!(level, enemy.hp);
+            self.enemies[self.player.x].pop_front();
+        } else {
+            self.enemies[self.player.x][0].hp -= level;
+            self.damage += level;
         }
     }
     fn evaluate_score(&mut self) {
         let level = self.get_level();
         self.evaluated_score = self.S * 1e6 as isize + self.damage;
 
-        if let Some(enemy) = self.enemies[self.player.x] {
-            let turn = enemy.y - self.player.y;
-            if enemy.hp <= level * turn as isize {
-                self.evaluated_score += 1000;
-            }
+        if self.enemies[self.player.x].is_empty() {
+            return;
         }
-    }
-    fn get_level(&self) -> isize {
-        1 + self.S / 100
+        let hp = self.enemies[self.player.x][0].hp;
+        let enemy_y = self.enemies[self.player.x][0].y;
+        let player_y = self.player.y;
+        let turn = enemy_y - player_y;
+        if hp <= level * turn as isize {
+            self.evaluated_score += 1000;
+        }
     }
     fn is_done(&self) -> bool {
         self.turn == TURN
@@ -325,12 +293,7 @@ impl std::cmp::Ord for State {
     }
 }
 
-fn beam_search_action(
-    state: &State,
-    field: &Field,
-    beam_width: usize,
-    time_threshold: f64,
-) -> isize {
+fn beam_search_action(state: &State, beam_width: usize, time_threshold: f64) -> isize {
     let mut now_beam = BinaryHeap::new();
     let mut best_state = state;
     now_beam.push(state.clone());
@@ -353,8 +316,8 @@ fn beam_search_action(
                     next_state.first_action = action;
                     next_state.damage = 0;
                 }
-                next_state.advance(action, field, false);
-                next_state.update_enemy(field);
+                next_state.advance(action);
+                next_state.update_enemy(0);
                 next_state.evaluate_score();
                 if !next_state.is_dead {
                     next_beam.push(next_state);
@@ -373,7 +336,7 @@ fn beam_search_action(
     }
     #[cfg(feature = "local")]
     {
-        // eprintln!("{}", turn);
+        eprintln!("{}", turn);
     }
     best_state.first_action
 }
@@ -383,7 +346,6 @@ struct Solver {}
 impl Solver {
     fn solve(&mut self) {
         let mut state = State::new();
-        let mut field = Field::new();
 
         #[cfg(feature = "local")]
         {
@@ -399,15 +361,10 @@ impl Solver {
             if N == -1 {
                 return;
             }
-            field.update(N as usize, state.turn);
-            state.update_enemy(&field);
-            let action = beam_search_action(&state, &field, 10000, time_threshold);
-            let mut b = false;
-            // if state.turn >= 145 && state.turn <= 150 {
-            if state.turn <= 10 {
-                b = true;
-            }
-            state.advance(action, &field, b);
+
+            state.update_enemy(N as usize);
+            let action = beam_search_action(&state, 10000, time_threshold);
+            state.advance(action);
             state.output(action);
         }
         eprintln!("Score: {}", state.score);
