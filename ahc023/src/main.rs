@@ -131,6 +131,7 @@ struct State {
     G: Vec<Vec<Vec<(usize, usize)>>>,
     SDK: Vec<(usize, usize, usize)>,
     crop: Vec<Vec<(usize, usize)>>,
+    ng_sections: BTreeSet<(usize, usize)>,
 }
 
 impl State {
@@ -162,6 +163,45 @@ impl State {
             }
         }
 
+        let mut ng_sections = BTreeSet::new();
+        ng_sections.insert((entrance, 0));
+        for i in 0..H {
+            for j in 0..W {
+                if i == entrance && j == 0 {
+                    continue;
+                }
+                let mut visited = vec![vec![false; W]; H];
+                let mut Q = VecDeque::new();
+                visited[entrance][0] = true;
+                Q.push_back((entrance, 0));
+                while let Some((now_y, now_x)) = Q.pop_front() {
+                    for &(next_y, next_x) in &G[now_y][now_x] {
+                        if next_y == i && next_x == j {
+                            continue;
+                        }
+                        if !visited[next_y][next_x] {
+                            visited[next_y][next_x] = true;
+                            Q.push_back((next_y, next_x));
+                        }
+                    }
+                }
+                let mut cnt = 0;
+                for ii in 0..H {
+                    for jj in 0..W {
+                        if visited[ii][jj] {
+                            cnt += 1;
+                        }
+                    }
+                }
+                if cnt < 350 {
+                    ng_sections.insert((i, j));
+                    // for &(next_y, next_x) in &G[i][j] {
+                    //     ng_sections.insert((next_y, next_x));
+                    // }
+                }
+            }
+        }
+
         let mut SDK = vec![];
         for (i, &(s, d)) in SD.iter().enumerate() {
             SDK.push((s, d, i + 1));
@@ -173,12 +213,13 @@ impl State {
             G,
             SDK,
             crop,
+            ng_sections,
         }
     }
     fn plant(&mut self, y: usize, x: usize, s: usize, d: usize) {
         self.crop[y][x] = (s, d);
     }
-    fn can_plant_section_list(&self) -> Vec<(usize, usize, usize)> {
+    fn can_plant_section_list(&self) -> Vec<(usize, Reverse<usize>, usize, usize)> {
         let mut dist = vec![vec![INF; W]; H];
         let mut Q = VecDeque::new();
         Q.push_back((self.entrance, 0));
@@ -197,7 +238,8 @@ impl State {
         for i in 0..H {
             for j in 0..W {
                 if dist[i][j] < INF {
-                    ret.push((dist[i][j], i, j));
+                    // ret.push((dist[i][j], Reverse(W - j + min!(i, H - i)), i, j));
+                    ret.push((dist[i][j], Reverse(W - j), i, j));
                 }
             }
         }
@@ -223,14 +265,22 @@ impl State {
         }
         visited[self.entrance][0]
     }
-    fn can_harvest_all(&self, y: usize, x: usize) -> bool {
-        let mut set = BTreeSet::new();
-        for &(_, y, x) in &self.can_plant_section_list() {
-            set.insert((y, x));
+    fn can_harvest_all(&mut self, y: usize, x: usize, s: usize, d: usize) -> bool {
+        let mut set_before = BTreeSet::new();
+        for &(_, _, y, x) in &self.can_plant_section_list() {
+            set_before.insert((y, x));
         }
-        if set.len() < 100 {
+        self.plant(y, x, s, d);
+        let mut set_after = BTreeSet::new();
+        for &(_, _, y, x) in &self.can_plant_section_list() {
+            set_after.insert((y, x));
+        }
+        if set_before.len() > set_after.len() + 2 {
             return false;
         }
+        // if set_after.len() < 100 {
+        //     return false;
+        // }
 
         let mut visited = vec![vec![false; W]; H];
         let mut Q = VecDeque::new();
@@ -267,7 +317,7 @@ impl State {
         }
         let mut ok = true;
         for &(y, x) in &check_list {
-            if !self.can_harvest(y, x, self.crop[y][x].1, &set) {
+            if !self.can_harvest(y, x, self.crop[y][x].1, &set_after) {
                 ok = false;
             }
         }
@@ -290,35 +340,48 @@ impl Solver {
         let mut state = State::read();
 
         let SDK = state.SDK.clone();
+        let mut max_score = 0;
+        for &(s, d, _) in &SDK {
+            max_score += d - s + 1;
+        }
+
         let mut ans = vec![];
         let mut score = 0;
         let time_threshold = 1.8;
         let time_keeper = TimeKeeper::new(time_threshold);
+        let mut planted_cnt = 0;
 
         for &(s, d, k) in &SDK {
             if time_keeper.isTimeOver() {
                 break;
             }
+            // if d - s + 1 < 5 {
+            //     continue;
+            // }
             let can_plant_list = state.can_plant_section_list();
-            let can_plant_list2 = can_plant_list[0..min!(400, can_plant_list.len())].to_vec();
+            // let can_plant_list2 = can_plant_list[0..min!(400, can_plant_list.len())].to_vec();
+            let can_plant_list2 = can_plant_list[0..min!(250, can_plant_list.len())].to_vec();
 
             let mut cnt = 0;
+            let cnt_limit = if d - s + 1 < 3 { 2 } else { 5 };
+            // let cnt_limit = 5;
 
-            while cnt < 8 {
-                let mut idx = rnd::gen_range(0, 2 * can_plant_list2.len());
-                if idx >= can_plant_list2.len() {
-                    idx = rnd::gen_range(0, can_plant_list2.len() / 2);
-                }
-                // let idx = rnd::gen_range(0, can_plant_list2.len());
-                let (_, y, x) = can_plant_list[idx];
-                if y == state.entrance && x == 0 {
+            while cnt < cnt_limit {
+                // let mut idx = rnd::gen_range(0, 2 * can_plant_list2.len());
+                // if idx >= can_plant_list2.len() {
+                //     idx = rnd::gen_range(0, can_plant_list2.len() / 2);
+                // }
+                let idx = rnd::gen_range(0, can_plant_list2.len());
+                let (_, _, y, x) = can_plant_list[idx];
+                if state.ng_sections.contains(&(y, x)) {
                     cnt += 1;
                     continue;
                 }
-                state.plant(y, x, s, d);
-                if state.can_harvest_all(y, x) {
+                // state.plant(y, x, s, d);
+                if state.can_harvest_all(y, x, s, d) {
                     ans.push((k, y, x, s));
                     score += d - s + 1;
+                    planted_cnt += 1;
                     break;
                 } else {
                     state.plant(y, x, 0, 0);
@@ -350,8 +413,12 @@ impl Solver {
             elapsed_time *= 1.5;
         }
         score *= 1e6 as usize;
+        max_score *= 1e6 as usize;
         score /= H * W * T;
+        max_score /= H * W * T;
         eprintln!("Score: {}", score);
+        eprintln!("Max: {}", max_score);
+        eprintln!("Planted: {}/{}", planted_cnt, SDK.len());
         eprintln!("Elapsed: {}", (elapsed_time * 1000.0) as usize);
     }
 }
