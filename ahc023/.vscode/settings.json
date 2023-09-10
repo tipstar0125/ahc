@@ -9,6 +9,10 @@
     ],
     "[jsonc]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter"
+    },
+    "python.formatting.provider": "none"
 }
 

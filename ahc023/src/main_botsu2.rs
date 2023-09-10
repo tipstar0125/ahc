@@ -109,7 +109,7 @@ impl TimeKeeper {
         let elapsed_time = self.start_time.elapsed().as_nanos() as f64 * 1e-9;
         #[cfg(feature = "local")]
         {
-            elapsed_time * 0.55
+            elapsed_time * 1.5
         }
         #[cfg(not(feature = "local"))]
         {
@@ -127,9 +127,10 @@ const INF: usize = 1_usize << 60;
 struct State {
     entrance: usize,
     G: Vec<Vec<Vec<(usize, usize)>>>,
-    K: usize,
+    SDK: Vec<(usize, usize, usize)>,
     crop: Vec<Vec<usize>>,
-    crop_plan: Vec<Vec<(usize, usize)>>,
+    crop_plan: Vec<Vec<(usize, Reverse<usize>, usize)>>,
+    ng_sections: BTreeSet<(usize, usize)>,
 }
 
 impl State {
@@ -161,22 +162,24 @@ impl State {
             }
         }
 
+        let mut ng_sections = BTreeSet::new();
+        ng_sections.insert((entrance, 0));
+
+        let mut SDK = vec![];
         let mut crop_plan = vec![vec![]; T + 1];
         for (i, &(s, d)) in SD.iter().enumerate() {
-            crop_plan[s].push((d, i + 1));
+            SDK.push((s, d, i + 1));
+            crop_plan[s].push((d, Reverse(s), i + 1));
         }
-
-        for t in 1..=T {
-            crop_plan[t].sort();
-            crop_plan[t].reverse();
-        }
+        SDK.sort_by(|(a0, a1, _), (b0, b1, _)| (a0, Reverse(a1)).cmp(&(b0, Reverse(b1))));
 
         State {
             entrance,
             G,
-            K,
+            SDK,
             crop,
             crop_plan,
+            ng_sections,
         }
     }
     fn plant(&mut self, y: usize, x: usize, d: usize) {
@@ -193,10 +196,10 @@ impl State {
                 if dist[now_y][now_x] + 1 < dist[next_y][next_x] && self.crop[next_y][next_x] == 0 {
                     dist[next_y][next_x] = dist[now_y][now_x] + 1;
                     Q.push_back((next_y, next_x));
-                    let mut ok_next_cnt = 12;
+                    let mut ok_next_cnt = 8;
                     for &(nn_y, nn_x) in &self.G[next_y][next_x] {
                         if self.crop[nn_y][nn_x] == 0 {
-                            ok_next_cnt -= 3;
+                            ok_next_cnt -= 2;
                         } else if self.crop[nn_y][nn_x] < d {
                             ok_next_cnt -= 1;
                         } else {
@@ -242,18 +245,16 @@ impl State {
             return false;
         }
 
+        let mut ok = true;
         for &(ny, nx) in &self.G[y][x] {
             if self.crop[ny][nx] == 0 {
                 continue;
             }
-            if self.crop[ny][nx] >= d {
-                continue;
-            }
             if !self.can_harvest(ny, nx, self.crop[ny][nx], &set_after) {
-                return false;
+                ok = false;
             }
         }
-        true
+        ok
     }
 }
 
@@ -270,73 +271,95 @@ impl Solver {
         }
 
         let mut state = State::read();
-        let time_threshold = 1.7 / state.K as f64;
+        let time_threshold = 1.8 / state.SDK.len() as f64;
 
         let mut ans = vec![];
         let mut score = 0;
         let mut added_time = 0.0;
-        for s in 1..=T {
+        let mut t = 1;
+        let mut not_planted_cnt = 0;
+        let mut exists_plant = true;
+        let window = 2;
+        let mut v = vec![];
+        for i in 0..window {
+            v.extend(state.crop_plan[t + i].clone());
+        }
+        v.sort();
+        while t <= T {
+            // if v.is_empty() || not_planted_cnt > 0 {
+            // if v.is_empty() || !exists_plant {
+            if v.is_empty() {
+                // for i in 0..H {
+                //     for j in 0..W {
+                //         if state.crop[i][j] == 0 {
+                //             continue;
+                //         }
+                //         if state.crop[i][j] < t {
+                //             state.crop[i][j] = 0;
+                //         }
+                //     }
+                // }
+                v = v
+                    .iter()
+                    .filter(|&&(_, Reverse(s), _)| s != t)
+                    .cloned()
+                    .collect_vec();
+                // v.clear();
+                if t + window <= T {
+                    v.extend(state.crop_plan[t + window].clone());
+                    v.sort();
+                }
+                t += 1;
+                not_planted_cnt = 0;
+                exists_plant = true;
+                continue;
+            }
+            let (d, Reverse(s), k) = v.pop().unwrap();
+
+            // for (s, d, k) in SDK {
+            let mut can_plant_list = state.can_plant_section_list(d);
+            can_plant_list.reverse();
+            if can_plant_list.is_empty() {
+                continue;
+            }
+
+            let time_keeper = TimeKeeper::new(time_threshold + added_time);
+            let mut planted = false;
+            let mut cnt = 0;
+
+            while !time_keeper.isTimeOver() {
+                if can_plant_list.len() == cnt {
+                    exists_plant = false;
+                    break;
+                }
+                let (_, _, y, x) = can_plant_list[cnt];
+                if state.ng_sections.contains(&(y, x)) {
+                    cnt += 1;
+                    continue;
+                }
+                if state.can_harvest_all(y, x, d) {
+                    ans.push((k, y, x, t));
+                    score += d - s + 1;
+                    planted = true;
+                    break;
+                } else {
+                    state.plant(y, x, 0);
+                }
+                cnt += 1;
+            }
+            added_time = (time_threshold + added_time - time_keeper.get_time()).max(0.0);
+            if !planted {
+                not_planted_cnt += 1;
+            }
             for i in 0..H {
                 for j in 0..W {
                     if state.crop[i][j] == 0 {
                         continue;
                     }
-                    if state.crop[i][j] < s {
+                    if state.crop[i][j] < t {
                         state.crop[i][j] = 0;
                     }
                 }
-            }
-            let mut harvest_cnt = 0;
-            let mut plan_cnt = 0;
-            let score_threshold = 8;
-            if s < T {
-                for i in 0..H {
-                    for j in 0..W {
-                        if state.crop[i][j] == 0 {
-                            continue;
-                        }
-                        if state.crop[i][j] < s + 1 {
-                            harvest_cnt += 1;
-                        }
-                    }
-                }
-                for (d, _) in state.crop_plan[s + 1].clone() {
-                    if d - (s + 1) + 1 >= score_threshold + 1 {
-                        plan_cnt += 1;
-                    }
-                }
-            }
-            
-            for (d, k) in state.crop_plan[s].clone() {
-                let mut can_plant_list = state.can_plant_section_list(d);
-                if (s < T
-                    && plan_cnt > can_plant_list.len() + harvest_cnt
-                    && d - s + 1 < score_threshold)
-                    || can_plant_list.is_empty()
-                {
-                    added_time += time_threshold;
-                    continue;
-                }
-                can_plant_list.reverse();
-
-                let time_keeper = TimeKeeper::new(time_threshold + added_time);
-                let mut cnt = 0;
-
-                while !time_keeper.isTimeOver() {
-                    if can_plant_list.len() <= cnt {
-                        break;
-                    }
-                    let (_, _, y, x) = can_plant_list[cnt];
-                    if state.can_harvest_all(y, x, d) {
-                        ans.push((k, y, x, s));
-                        score += d - s + 1;
-                        break;
-                    } else {
-                        state.plant(y, x, 0);
-                    }
-                    cnt += 1;
-                }
-                added_time = (time_threshold + added_time - time_keeper.get_time()).max(0.0);
             }
         }
 
