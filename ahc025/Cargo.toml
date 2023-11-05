@@ -1,0 +1,18 @@
+[package]
+name = "ahc025"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+superslice = "=1.0.0"
+itertools = "=0.9.0"
+proconio = { version = "=0.3.6", features = ["derive"] }
+
+[features]
+local = []
+seed = []
+
+[profile.dev]
+opt-level = 3
