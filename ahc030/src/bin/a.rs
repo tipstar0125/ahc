@@ -14,13 +14,11 @@ use std::{
 };
 
 use itertools::Itertools;
-use num_traits::Pow;
 use proconio::{
     input,
     marker::{Chars, Usize1},
 };
-use rand::{prelude::*, SeedableRng};
-use rand_chacha::ChaCha20Rng;
+use rand::prelude::*;
 use superslice::Ext;
 
 fn main() {
@@ -36,30 +34,20 @@ fn main() {
         eps: f64,
     }
 
-    let mut minos_ = vec![];
     let mut minos = vec![];
-    let mut small_mino_cnt = 0;
     for _ in 0..M {
         input! {
             d: usize,
             coords: [(usize, usize); d]
         }
-        if d <= 4 {
-            small_mino_cnt += 1;
-        }
-        minos_.push((d, coords));
-    }
-    minos_.sort();
-    minos_.reverse();
-    for m in minos_.iter() {
         let mut coord_diff = vec![];
         let mut height = 0;
         let mut width = 0;
-        for coord in m.1.iter() {
+        for coord in coords.iter() {
             let row = coord.0;
             let col = coord.1;
-            height.chmax(row + 1);
-            width.chmax(col + 1);
+            height = height.max(row + 1);
+            width = width.max(col + 1);
             coord_diff.push(CoordDiff::new(row as isize, col as isize));
         }
         let mino = Mino {
@@ -79,306 +67,63 @@ fn main() {
     let ans = ans.into_iter().flatten().collect_vec();
     let ans = DynamicMap2d::new(ans, N);
 
+    let candidate_mino_coords = make_candidate_mino_coords(N, &minos);
+    let boards = make_boards(N, &minos, &candidate_mino_coords);
+
     let mut turn = 0;
     let mut cost = 0.0_f64;
-    let mut ac = "WA";
+    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(1);
 
-    let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(0);
-    if small_mino_cnt <= 10 {
-        let PATTERN_MAX = 5e6;
-        let PATTERN_LIMIT = 1e100;
-        let mut mp = DynamicMap2d::new(vec![None; N * N], N);
-        #[allow(unused_assignments)]
-        let mut last_coord_cands = vec![];
-        let mut before_pattern_num = 1e101;
-        loop {
-            let mut coord_cands = vec![vec![]; M];
-            let mut vote = DynamicMap2d::new(vec![vec![]; N * N], N);
-            for (m, mino) in minos.iter().enumerate() {
-                for i in 0..N - mino.height + 1 {
-                    'outer: for j in 0..N - mino.width + 1 {
-                        let pos = Coord::new(i, j);
-                        for adj in mino.coord_diff.iter() {
-                            let next = pos + *adj;
-                            if let Some(x) = mp[next] {
-                                if x == 0 {
-                                    continue 'outer;
-                                }
-                            }
-                        }
-                        coord_cands[m].push(pos);
-                        for adj in mino.coord_diff.iter() {
-                            let next = pos + *adj;
-                            vote[next].push((m, (i, j)));
-                        }
-                    }
-                }
+    let board_num = boards.len();
+    let mut prob = vec![1.0 / (board_num as f64); board_num];
+
+    loop {
+        let k = 30;
+        let mut coords = HashSet::new();
+        while coords.len() < k {
+            let i = rng.gen_range(0..N);
+            let j = rng.gen_range(0..N);
+            let pos = Coord::new(i, j);
+            if !coords.contains(&pos) {
+                coords.insert(pos);
             }
-
-            let mut pattern_num_vec = vec![];
-            let mut pattern_num = 1.0;
-            for coords in coord_cands.iter() {
-                pattern_num_vec.push(coords.len());
-                if pattern_num < PATTERN_LIMIT {
-                    pattern_num *= coords.len() as f64;
-                }
+        }
+        let coords: Vec<Coord> = coords.into_iter().collect();
+        let ret = query(&coords, &ans, eps, &es, &mut turn, &mut cost);
+        make_query(&coords);
+        // input! {ret:u8};
+        for i in 0..board_num {
+            let mut cnt = 0;
+            for coord in coords.iter() {
+                cnt += boards[i][*coord];
             }
-
-            if pattern_num < PATTERN_MAX {
-                last_coord_cands = coord_cands;
+            prob[i] *= likelihood(k, eps, cnt, ret);
+        }
+        normalize(&mut prob);
+        let mut mx = 0.0;
+        let mut idx = 0;
+        for (i, &p) in prob.iter().enumerate() {
+            if mx < p {
+                mx = p;
+                idx = i;
+            }
+        }
+        if mx > 0.8 {
+            make_answer(&boards[idx]);
+            let ret = eval(&boards[idx], &ans);
+            // input! {ret:u8};
+            if ret == 1 {
                 break;
             }
-            if pattern_num == before_pattern_num {
-                eprintln!("Same num");
-                last_coord_cands = coord_cands;
-                break;
-            }
-            before_pattern_num = pattern_num;
-            eprintln!("{}", pattern_num);
-
-            let mut search_cands = vec![];
-            for i in 0..N {
-                for j in 0..N {
-                    let pos = Coord::new(i, j);
-                    if mp[pos].is_some() {
-                        continue;
-                    }
-                    if vote[pos].is_empty() {
-                        continue;
-                    }
-                    let mut delete_set = vec![HashSet::new(); M];
-                    for (m, st) in vote[pos].iter() {
-                        delete_set[*m].insert(st);
-                    }
-                    let mut num = 1.0;
-                    for m in 0..M {
-                        if num < PATTERN_LIMIT {
-                            num *= pattern_num_vec[m] as f64 - delete_set[m].len() as f64;
-                        }
-                    }
-                    search_cands.push((num as u128, (i, j)));
-                }
-            }
-            search_cands.sort();
-            search_cands.reverse();
-            while let Some((_, (i, j))) = search_cands.pop() {
-                let search_coord = Coord::new(i, j);
-                if mp[search_coord].is_some() {
-                    continue;
-                }
-                let out = query(&[search_coord], &ans, eps, &es, &mut turn, &mut cost);
-                make_query(&[search_coord]);
-                // input! {out:u8};
-                mp[search_coord] = Some(out);
-                if out == 0 {
-                    break;
-                }
-            }
-        }
-
-        let mut Q = VecDeque::new();
-        let a = vec![0_u64; N];
-        let mut ans_cands = vec![];
-        Q.push_back((0, a));
-        'outer1: while let Some((pos, a)) = Q.pop_front() {
-            if pos == M {
-                for i in 0..N {
-                    for j in 0..N {
-                        let u = Coord::new(i, j);
-                        if let Some(x) = mp[u] {
-                            if x != ((a[i] / (6_u64.pow(j as u32))) % 6) as u8 {
-                                continue 'outer1;
-                            }
-                        }
-                    }
-                }
-
-                ans_cands.push(a);
-                continue;
-            }
-            'outer2: for st in last_coord_cands[pos].iter() {
-                let mut na = a.clone();
-                for adj in minos[pos].coord_diff.iter() {
-                    let next = *st + *adj;
-                    na[next.row] += 6_u64.pow(next.col as u32);
-                    let x = ((na[next.row] / (6_u64.pow(next.col as u32))) % 6) as u8;
-                    if mp[next].is_some() && x > mp[next].unwrap() {
-                        continue 'outer2;
-                    }
-                }
-                Q.push_back((pos + 1, na));
-            }
-        }
-
-        while ans_cands.len() > N * N / 5 {
-            let mut search_coord_cands = vec![];
-            for i in 0..N {
-                for j in 0..N {
-                    let pos = Coord::new(i, j);
-                    if mp[pos].is_some() {
-                        continue;
-                    }
-                    search_coord_cands.push(pos);
-                }
-            }
-            search_coord_cands.shuffle(&mut rng);
-
-            while let Some(pos) = search_coord_cands.pop() {
-                if mp[pos].is_some() {
-                    continue;
-                }
-                let out = query(&[pos], &ans, eps, &es, &mut turn, &mut cost);
-                make_query(&[pos]);
-                // input! {out:u8};
-                mp[pos] = Some(out);
-                if out > 0 {
-                    break;
-                }
-            }
-
-            let mut next_ans_cands = vec![];
-            'outer: for a in ans_cands.iter() {
-                for i in 0..N {
-                    for j in 0..N {
-                        let u = Coord::new(i, j);
-                        if let Some(x) = mp[u] {
-                            if x != ((a[i] / (6_u64.pow(j as u32))) % 6) as u8 {
-                                continue 'outer;
-                            }
-                        }
-                    }
-                }
-                next_ans_cands.push(a.clone());
-            }
-            ans_cands = next_ans_cands;
-        }
-
-        let mut ans_cands_sort = vec![];
-        for (i, a) in ans_cands.iter().enumerate() {
-            let mut coords = vec![];
-            for i in 0..N {
-                for j in 0..N {
-                    let pos = Coord::new(i, j);
-                    if ((a[i] / (6_u64.pow(j as u32))) % 6) as u8 > 0 {
-                        coords.push(pos);
-                    }
-                }
-            }
-            let out = query(&coords, &ans, eps, &es, &mut turn, &mut cost);
-            make_query(&coords);
-            // input! {out:u8};
-            ans_cands_sort.push((out, i));
-        }
-        ans_cands_sort.sort();
-        ans_cands_sort.reverse();
-
-        for (_, i) in ans_cands_sort.iter() {
-            turn += 1;
-            let a = ans_cands[*i].clone();
-            let mut aa = DynamicMap2d::new(vec![0; N * N], N);
-            for i in 0..N {
-                for j in 0..N {
-                    let pos = Coord::new(i, j);
-                    aa[pos] = ((a[i] / (6_u64.pow(j as u32))) % 6) as u8;
-                }
-            }
-            make_answer(&aa);
-            if check_ans(&aa, &ans) {
-                ac = "AC";
-                break;
-            }
-            // input! {out:usize}
-            // if out == 1 {
-            //     break;
-            // }
             cost += 1.0;
+            prob[idx] = 0.0;
         }
-    } else {
-        let mut mino_num = 0;
-        for mino in minos.iter() {
-            mino_num += mino.coord_diff.len();
-        }
-
-        let mut cnt = 0;
-        let mut mp = DynamicMap2d::new(vec![None; N * N], N);
-
-        'outer: while cnt < mino_num {
-            let mut i = rng.gen_range(0..N);
-            let mut j = rng.gen_range(0..N);
-            loop {
-                if mp[Coord::new(i, j)].is_none() {
-                    break;
-                }
-                i = rng.gen_range(0..N);
-                j = rng.gen_range(0..N);
-            }
-            let now = Coord::new(i, j);
-
-            let out = query(&[now], &ans, eps, &es, &mut turn, &mut cost); // Local
-            make_query(&[now]);
-            // input! {out:u8}
-
-            if out == 0 {
-                mp[now] = Some(0);
-                continue;
-            }
-            cnt += out as usize;
-            if cnt >= mino_num {
-                break;
-            }
-            mp[now] = Some(out);
-            let mut Q = VecDeque::new();
-            Q.push_back(now);
-
-            while let Some(u) = Q.pop_front() {
-                for adj in ADJ {
-                    let v = u + adj;
-                    if !v.in_map(N, N) {
-                        continue;
-                    }
-                    if mp[v].is_some() {
-                        continue;
-                    }
-                    let out = query(&[v], &ans, eps, &es, &mut turn, &mut cost); // Local
-                    make_query(&[v]);
-                    // input! {out:u8}
-
-                    if out == 0 {
-                        mp[v] = Some(0);
-                    } else {
-                        mp[v] = Some(out);
-                        Q.push_back(v);
-                        cnt += out as usize;
-                        if cnt >= mino_num {
-                            break 'outer;
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut a = DynamicMap2d::new(vec![0; N * N], N);
-        for i in 0..N {
-            for j in 0..N {
-                let pos = Coord::new(i, j);
-                if let Some(x) = mp[pos] {
-                    a[pos] = x;
-                }
-            }
-        }
-
-        make_answer(&a);
-        if check_ans(&a, &ans) {
-            ac = "AC";
-        }
-        // input! {out:u8}
     }
 
     let score = (1e6 * cost.max(1.0 / N as f64)).round() as usize;
-    eprintln!("Cost: {}", cost / (N as f64 * N as f64));
-    // eprintln!("Cost: {}", cost);
-    eprintln!("Score: {score}");
     eprintln!("Turn: {}", turn as f64 / (2.0 * N as f64 * N as f64));
+    eprintln!("Cost: {}", cost);
+    eprintln!("Score: {score}");
 
     #[allow(unused_mut, unused_assignments)]
     let mut elapsed_time = start.elapsed().as_micros() as f64 * 1e-6;
@@ -388,57 +133,70 @@ fn main() {
         elapsed_time *= 0.55;
     }
     eprintln!("Elapsed: {}", (elapsed_time * 1000.0) as usize);
-    eprintln!("Check: {ac}");
 }
 
-fn calc_prob(mut out: f64, k: usize, eps: f64) -> Vec<f64> {
-    let base = 3;
-    let num = (base - 1) * k;
-    let mut probs = vec![0.0; num + 1];
-    let std = (k as f64 * eps * (1.0 - eps)).sqrt();
-    let delta = std * 0.1;
-    if out == 0.0 {
-        out -= std;
+fn make_candidate_mino_coords(N: usize, minos: &[Mino]) -> Vec<Vec<Coord>> {
+    let mut ret = vec![];
+    for mino in minos.iter() {
+        let mut cands = vec![];
+        for i in 0..N - mino.height + 1 {
+            for j in 0..N - mino.width + 1 {
+                let pos = Coord::new(i, j);
+                cands.push(pos);
+            }
+        }
+        ret.push(cands);
     }
-    for i in 0..=num {
-        let mean = (k as f64 - i as f64) * eps + (i as f64) * (1.0 - eps);
-        let diff = (mean - out).abs();
-        probs[i] = e(diff + delta, std) - e(diff - delta, std);
-    }
+    ret
+}
 
-    let sum = probs.iter().sum::<f64>().min(1.0);
-    if sum == 0.0 {
-        probs = vec![0.0; num + 1];
-        probs[num] = 1.0;
+fn make_boards(
+    N: usize,
+    minos: &[Mino],
+    candidate_mino_coords: &[Vec<Coord>],
+) -> Vec<DynamicMap2d<u8>> {
+    let M = minos.len();
+    let mut ret = vec![];
+    let mut Q = VecDeque::new();
+    Q.push_back((0, DynamicMap2d::new(vec![0_u8; N * N], N)));
+    while let Some((cnt, B)) = Q.pop_front() {
+        if cnt == M {
+            ret.push(B.clone());
+            continue;
+        }
+        for &pos in candidate_mino_coords[cnt].iter() {
+            let mut nB = B.clone();
+            for &coord_diff in minos[cnt].coord_diff.iter() {
+                let nxt = pos + coord_diff;
+                nB[nxt] += 1;
+            }
+            Q.push_back((cnt + 1, nB));
+        }
+    }
+    ret
+}
+
+fn likelihood(k: usize, eps: f64, cnt: u8, ret: u8) -> f64 {
+    let mean = (k as f64 - cnt as f64) * eps + (cnt as f64) * (1.0 - eps);
+    let std = ((k as f64) * eps * (1.0 - eps)).sqrt();
+    let diff = ret as f64 - mean;
+    let l = diff - 0.5;
+    let r = diff + 0.5;
+
+    fn prob_integral(l: f64, r: f64, std: f64) -> f64 {
+        (cdf(r, std) - cdf(l, std)).max(0.0)
+    }
+    let p = if ret == 0 {
+        prob_integral(-1e10, r, std)
     } else {
-        let sum_inv = 1.0 / sum;
-        for i in 0..=num {
-            probs[i] *= sum_inv;
-        }
-    }
-
-    let pattern_num = base.pow(k as u32);
-    let mut cnt_pattern = vec![vec![]; num + 1];
-    for i in 0..pattern_num {
-        let mut n = i;
-        let mut s = 0;
-        while n > 0 {
-            s += n % base;
-            n /= base;
-        }
-        cnt_pattern[s].push(i);
-    }
-    let mut prob = vec![0.0; base];
-    for i in 0..=num {
-        for p in cnt_pattern[i].iter() {
-            prob[p % base] += probs[i] / cnt_pattern[i].len() as f64;
-        }
-    }
-    prob
+        prob_integral(l, r, std)
+    };
+    assert!(p >= 0.0);
+    p
 }
 
-fn e(x: f64, std: f64) -> f64 {
-    0.5 + 0.5 * erf(x / std / 2.0_f64.sqrt())
+fn cdf(x: f64, std: f64) -> f64 {
+    (0.5 + 0.5 * erf(x / std / 2.0_f64.sqrt())).max(0.0)
 }
 
 fn erf(x: f64) -> f64 {
@@ -451,6 +209,14 @@ fn erf(x: f64) -> f64 {
 
     let t = 1.0 / (1.0 + P * x);
     1.0 - (((((A5 * t + A4) * t) + A3) * t + A2) * t + A1) * t * (-x * x).exp()
+}
+
+fn normalize(prob: &mut [f64]) {
+    let s = prob.iter().sum::<f64>();
+    assert!(s >= 0.0);
+    for p in prob.iter_mut() {
+        *p /= s;
+    }
 }
 
 #[derive(Debug)]
@@ -497,13 +263,13 @@ fn make_query(coords: &[Coord]) {
     println!("{query}");
 }
 
-fn make_answer(mp: &DynamicMap2d<u8>) {
-    let N = mp.size;
+fn make_answer(a: &DynamicMap2d<u8>) {
+    let N = a.size;
     let mut coords = vec![];
     for i in 0..N {
         for j in 0..N {
             let coord = Coord::new(i, j);
-            if mp[coord] > 0 {
+            if a[coord] > 0 {
                 coords.push(coord);
             }
         }
@@ -519,20 +285,20 @@ fn make_answer(mp: &DynamicMap2d<u8>) {
     println!("{ans}");
 }
 
-fn check_ans(a: &DynamicMap2d<u8>, ans: &DynamicMap2d<i32>) -> bool {
+fn eval(a: &DynamicMap2d<u8>, ans: &DynamicMap2d<i32>) -> u8 {
     let N = a.size;
     for i in 0..N {
         for j in 0..N {
             let pos = Coord::new(i, j);
             if ans[pos] as u8 != a[pos] {
-                return false;
+                return 0;
             }
         }
     }
-    true
+    1
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Coord {
     row: usize,
     col: usize,
@@ -577,46 +343,6 @@ pub const ADJ: [CoordDiff; 4] = [
     CoordDiff::new(!0, 0),
     CoordDiff::new(0, 1),
     CoordDiff::new(0, !0),
-];
-
-pub const ADJACENT4: [CoordDiff; 4] = [
-    CoordDiff::new(0, 0),
-    CoordDiff::new(0, 1),
-    CoordDiff::new(1, 0),
-    CoordDiff::new(1, 1),
-];
-
-pub const ADJACENT6: [CoordDiff; 6] = [
-    CoordDiff::new(0, 0),
-    CoordDiff::new(0, 1),
-    CoordDiff::new(1, 0),
-    CoordDiff::new(1, 1),
-    CoordDiff::new(2, 0),
-    CoordDiff::new(2, 1),
-];
-
-pub const ADJACENT8: [CoordDiff; 8] = [
-    CoordDiff::new(0, 0),
-    CoordDiff::new(0, 1),
-    CoordDiff::new(1, 0),
-    CoordDiff::new(1, 1),
-    CoordDiff::new(2, 0),
-    CoordDiff::new(2, 1),
-    CoordDiff::new(3, 0),
-    CoordDiff::new(3, 1),
-];
-
-pub const ADJACENT10: [CoordDiff; 10] = [
-    CoordDiff::new(0, 0),
-    CoordDiff::new(0, 1),
-    CoordDiff::new(1, 0),
-    CoordDiff::new(1, 1),
-    CoordDiff::new(2, 0),
-    CoordDiff::new(2, 1),
-    CoordDiff::new(3, 0),
-    CoordDiff::new(3, 1),
-    CoordDiff::new(4, 0),
-    CoordDiff::new(4, 1),
 ];
 
 pub struct CoordIndex(pub usize);
@@ -675,64 +401,5 @@ impl<T> std::ops::IndexMut<CoordIndex> for DynamicMap2d<T> {
     #[inline]
     fn index_mut(&mut self, index: CoordIndex) -> &mut Self::Output {
         unsafe { self.map.get_unchecked_mut(index.0) }
-    }
-}
-
-pub trait ChangeMinMax {
-    fn chmin(&mut self, x: Self) -> bool;
-    fn chmax(&mut self, x: Self) -> bool;
-}
-
-impl<T: PartialOrd> ChangeMinMax for T {
-    fn chmin(&mut self, x: Self) -> bool {
-        *self > x && {
-            *self = x;
-            true
-        }
-    }
-    fn chmax(&mut self, x: Self) -> bool {
-        *self < x && {
-            *self = x;
-            true
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct TimeKeeper {
-    start_time: std::time::Instant,
-    time_threshold: f64,
-}
-
-impl TimeKeeper {
-    fn new(time_threshold: f64) -> Self {
-        TimeKeeper {
-            start_time: std::time::Instant::now(),
-            time_threshold,
-        }
-    }
-    #[inline]
-    fn isTimeOver(&self) -> bool {
-        let elapsed_time = self.start_time.elapsed().as_nanos() as f64 * 1e-9;
-        #[cfg(feature = "local")]
-        {
-            elapsed_time * 0.55 >= self.time_threshold
-        }
-        #[cfg(not(feature = "local"))]
-        {
-            elapsed_time >= self.time_threshold
-        }
-    }
-    #[inline]
-    fn get_time(&self) -> f64 {
-        let elapsed_time = self.start_time.elapsed().as_nanos() as f64 * 1e-9;
-        #[cfg(feature = "local")]
-        {
-            elapsed_time * 0.55
-        }
-        #[cfg(not(feature = "local"))]
-        {
-            elapsed_time
-        }
     }
 }

@@ -14,6 +14,7 @@ use std::{
 };
 
 use itertools::Itertools;
+use num_traits::Pow;
 use proconio::{
     input,
     marker::{Chars, Usize1},
@@ -35,6 +36,7 @@ fn main() {
         eps: f64,
     }
 
+    let mut minos_ = vec![];
     let mut minos = vec![];
     let mut small_mino_cnt = 0;
     for _ in 0..M {
@@ -45,10 +47,15 @@ fn main() {
         if d <= 4 {
             small_mino_cnt += 1;
         }
+        minos_.push((d, coords));
+    }
+    minos_.sort();
+    minos_.reverse();
+    for m in minos_.iter() {
         let mut coord_diff = vec![];
         let mut height = 0;
         let mut width = 0;
-        for coord in coords.iter() {
+        for coord in m.1.iter() {
             let row = coord.0;
             let col = coord.1;
             height.chmax(row + 1);
@@ -78,7 +85,7 @@ fn main() {
 
     let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(0);
     if small_mino_cnt <= 10 {
-        let PATTERN_MAX = 1e7;
+        let PATTERN_MAX = 5e6;
         let PATTERN_LIMIT = 1e100;
         let mut mp = DynamicMap2d::new(vec![None; N * N], N);
         #[allow(unused_assignments)]
@@ -87,7 +94,6 @@ fn main() {
         loop {
             let mut coord_cands = vec![vec![]; M];
             let mut vote = DynamicMap2d::new(vec![vec![]; N * N], N);
-
             for (m, mino) in minos.iter().enumerate() {
                 for i in 0..N - mino.height + 1 {
                     'outer: for j in 0..N - mino.width + 1 {
@@ -134,6 +140,9 @@ fn main() {
             for i in 0..N {
                 for j in 0..N {
                     let pos = Coord::new(i, j);
+                    if mp[pos].is_some() {
+                        continue;
+                    }
                     if vote[pos].is_empty() {
                         continue;
                     }
@@ -168,7 +177,7 @@ fn main() {
         }
 
         let mut Q = VecDeque::new();
-        let a = DynamicMap2d::new(vec![0_u8; N * N], N);
+        let a = vec![0_u64; N];
         let mut ans_cands = vec![];
         Q.push_back((0, a));
         'outer1: while let Some((pos, a)) = Q.pop_front() {
@@ -177,7 +186,7 @@ fn main() {
                     for j in 0..N {
                         let u = Coord::new(i, j);
                         if let Some(x) = mp[u] {
-                            if x != a[u] {
+                            if x != ((a[i] / (6_u64.pow(j as u32))) % 6) as u8 {
                                 continue 'outer1;
                             }
                         }
@@ -191,8 +200,9 @@ fn main() {
                 let mut na = a.clone();
                 for adj in minos[pos].coord_diff.iter() {
                     let next = *st + *adj;
-                    na[next] += 1;
-                    if mp[next].is_some() && na[next] > mp[next].unwrap() {
+                    na[next.row] += 6_u64.pow(next.col as u32);
+                    let x = ((na[next.row] / (6_u64.pow(next.col as u32))) % 6) as u8;
+                    if mp[next].is_some() && x > mp[next].unwrap() {
                         continue 'outer2;
                     }
                 }
@@ -232,7 +242,7 @@ fn main() {
                     for j in 0..N {
                         let u = Coord::new(i, j);
                         if let Some(x) = mp[u] {
-                            if x != a[u] {
+                            if x != ((a[i] / (6_u64.pow(j as u32))) % 6) as u8 {
                                 continue 'outer;
                             }
                         }
@@ -249,7 +259,7 @@ fn main() {
             for i in 0..N {
                 for j in 0..N {
                     let pos = Coord::new(i, j);
-                    if a[pos] > 0 {
+                    if ((a[i] / (6_u64.pow(j as u32))) % 6) as u8 > 0 {
                         coords.push(pos);
                     }
                 }
@@ -265,8 +275,15 @@ fn main() {
         for (_, i) in ans_cands_sort.iter() {
             turn += 1;
             let a = ans_cands[*i].clone();
-            make_answer(&a);
-            if check_ans(&a, &ans) {
+            let mut aa = DynamicMap2d::new(vec![0; N * N], N);
+            for i in 0..N {
+                for j in 0..N {
+                    let pos = Coord::new(i, j);
+                    aa[pos] = ((a[i] / (6_u64.pow(j as u32))) % 6) as u8;
+                }
+            }
+            make_answer(&aa);
+            if check_ans(&aa, &ans) {
                 ac = "AC";
                 break;
             }
