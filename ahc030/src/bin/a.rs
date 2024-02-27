@@ -78,17 +78,8 @@ fn main() {
     let mut prob = vec![1.0 / (board_num as f64); board_num];
 
     loop {
-        let k = 30;
-        let mut coords = HashSet::new();
-        while coords.len() < k {
-            let i = rng.gen_range(0..N);
-            let j = rng.gen_range(0..N);
-            let pos = Coord::new(i, j);
-            if !coords.contains(&pos) {
-                coords.insert(pos);
-            }
-        }
-        let coords: Vec<Coord> = coords.into_iter().collect();
+        let coords = decide_fortune(N, eps, &mut rng, &prob, &boards);
+        let k = coords.len();
         let ret = query(&coords, &ans, eps, &es, &mut turn, &mut cost);
         make_query(&coords);
         // input! {ret:u8};
@@ -176,39 +167,121 @@ fn make_boards(
     ret
 }
 
-fn likelihood(k: usize, eps: f64, cnt: u8, ret: u8) -> f64 {
-    let mean = (k as f64 - cnt as f64) * eps + (cnt as f64) * (1.0 - eps);
-    let std = ((k as f64) * eps * (1.0 - eps)).sqrt();
-    let diff = ret as f64 - mean;
-    let l = diff - 0.5;
-    let r = diff + 0.5;
-
-    fn prob_integral(l: f64, r: f64, std: f64) -> f64 {
-        (cdf(r, std) - cdf(l, std)).max(0.0)
+fn decide_fortune(
+    N: usize,
+    eps: f64,
+    rng: &mut rand_chacha::ChaCha20Rng,
+    prob: &[f64],
+    boards: &[DynamicMap2d<u8>],
+) -> Vec<Coord> {
+    let mut fortune_coords = HashSet::new();
+    for i in 0..N {
+        for j in 0..N {
+            fortune_coords.insert(Coord::new(i, j));
+        }
     }
-    let p = if ret == 0 {
-        prob_integral(-1e10, r, std)
+    let mut best_score = 0.0;
+    let mut best_fortune_coords = fortune_coords.clone();
+    let mut k = N * N;
+
+    let L = boards.len();
+    let mut cnt = vec![0; L];
+    for (i, board) in boards.iter().enumerate() {
+        for coord in fortune_coords.iter() {
+            cnt[i] += board[*coord];
+        }
+    }
+
+    for _ in 0..1000 {
+        let i = rng.gen_range(0..N);
+        let j = rng.gen_range(0..N);
+        let coord = Coord::new(i, j);
+        let mut is_removed = false;
+        if fortune_coords.contains(&coord) {
+            fortune_coords.remove(&coord);
+            for (i, board) in boards.iter().enumerate() {
+                cnt[i] -= board[coord];
+            }
+            k -= 1;
+            is_removed = true;
+        } else {
+            fortune_coords.insert(coord);
+            for (i, board) in boards.iter().enumerate() {
+                cnt[i] += board[coord];
+            }
+            k += 1;
+        }
+
+        let score = calc_mutual_information(k, eps, prob, &cnt);
+        if score > best_score {
+            best_score = score;
+            best_fortune_coords = fortune_coords.clone();
+        } else if is_removed {
+            fortune_coords.insert(coord);
+            for (i, board) in boards.iter().enumerate() {
+                cnt[i] += board[coord];
+            }
+            k += 1;
+        } else {
+            fortune_coords.remove(&coord);
+            for (i, board) in boards.iter().enumerate() {
+                cnt[i] -= board[coord];
+            }
+            k -= 1;
+        }
+    }
+    best_fortune_coords.into_iter().collect()
+}
+
+fn calc_mutual_information(k: usize, eps: f64, prob: &[f64], cnt: &[u8]) -> f64 {
+    let query_result_num = 40;
+    let mut query_result_p_vec = vec![0.0; query_result_num + 1];
+
+    for (&p, &c) in prob.iter().zip(cnt) {
+        for query_result in 0..=query_result_num {
+            query_result_p_vec[query_result] += p * likelihood(k, eps, c, query_result as u8);
+        }
+    }
+    let mut ret = 0.0;
+
+    for (query_result, query_result_p) in query_result_p_vec.iter().enumerate() {
+        if *query_result_p == 0.0 {
+            continue;
+        }
+        for (&p, &c) in prob.iter().zip(cnt) {
+            let likelihood = likelihood(k, eps, c, query_result as u8);
+            if likelihood == 0.0 {
+                continue;
+            }
+            ret += likelihood * p * (likelihood / query_result_p).log2();
+        }
+    }
+
+    ret * (k as f64).sqrt()
+}
+
+#[allow(clippy::approx_constant)]
+fn normal_cdf(x: f64, mean: f64, std_dev: f64) -> f64 {
+    0.5 * (1.0 + libm::erf((x - mean) / (std_dev * 1.41421356237)))
+}
+
+fn probability_in_range(mean: f64, std_dev: f64, a: f64, b: f64) -> f64 {
+    if mean < a {
+        return probability_in_range(mean, std_dev, 2.0 * mean - b, 2.0 * mean - a);
+    }
+    let p_a = normal_cdf(a, mean, std_dev);
+    let p_b = normal_cdf(b, mean, std_dev);
+    p_b - p_a
+}
+
+fn likelihood(k: usize, eps: f64, cnt: u8, res: u8) -> f64 {
+    let mean = (k as f64 - cnt as f64) * eps + (cnt as f64) * (1.0 - eps);
+    let std_dev = ((k as f64) * eps * (1.0 - eps)).sqrt();
+    if res == 0 {
+        probability_in_range(mean, std_dev, -1e10, res as f64 + 0.5)
     } else {
-        prob_integral(l, r, std)
-    };
-    assert!(p >= 0.0);
-    p
-}
-
-fn cdf(x: f64, std: f64) -> f64 {
-    (0.5 + 0.5 * erf(x / std / 2.0_f64.sqrt())).max(0.0)
-}
-
-fn erf(x: f64) -> f64 {
-    const A1: f64 = 0.254829592;
-    const A2: f64 = -0.284496736;
-    const A3: f64 = 1.421413741;
-    const A4: f64 = -1.453152027;
-    const A5: f64 = 1.061405429;
-    const P: f64 = 0.3275911;
-
-    let t = 1.0 / (1.0 + P * x);
-    1.0 - (((((A5 * t + A4) * t) + A3) * t + A2) * t + A1) * t * (-x * x).exp()
+        probability_in_range(mean, std_dev, res as f64 - 0.5, res as f64 + 0.5)
+    }
 }
 
 fn normalize(prob: &mut [f64]) {
