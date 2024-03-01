@@ -17,7 +17,7 @@ fn main() {
     let start = std::time::Instant::now();
     #[cfg(feature = "local")]
     {
-        let seed = 1;
+        let seed = 0;
         eprintln!("Seed: {seed}");
         rnd::init(seed);
     }
@@ -47,52 +47,38 @@ fn solve() {
     let time_keeper = TimeKeeper::new(0.8);
 
     let mut order = (1..N).collect::<Vec<usize>>();
-    let mut used = HashSet::new();
-    used.insert(order.clone());
     let mut best_order = order.clone();
-    let (mut best_score, _) = play(&AB, &order);
+    let mut best_score = play(&AB, &order);
+    let mut current_score = best_score;
     let mut iterations = 0;
-    let mut temp = 1000.0;
-    let cool_rate = 0.9;
 
-    'outer: while !time_keeper.isTimeOver() {
+    while !time_keeper.isTimeOver() {
         iterations += 1;
-        let mut i;
-        let mut j;
-        loop {
-            if time_keeper.isTimeOver() {
-                break 'outer;
-            }
-            i = rnd::gen_range(0, N - 1);
-            j = rnd::gen_range(0, N - 1);
-            if i == j {
-                continue;
-            }
-            order.swap(i, j);
-            if used.contains(&order) {
-                order.swap(i, j);
-            } else {
-                used.insert(order.clone());
-                break;
-            }
+
+        let i = rnd::gen_range(0, N - 1);
+        let j = rnd::gen_range(0, N - 1);
+        if i == j {
+            continue;
         }
-        let score = play2(&AB, &order);
-        if score > best_score
-            || rnd::gen_float() < ((score as f64 - best_score as f64) / temp).exp()
-        {
+        order.swap(i, j);
+
+        let score = play(&AB, &order);
+        let diff = score as f64 - current_score as f64;
+        // diff=score-current_score
+        // diff>=0, exp(diff)>=1
+        if rnd::gen_float() < (diff / 1e5 / 0.2).exp() {
             if score > best_score {
-                eprintln!("updated: {}", iterations);
+                best_score = score;
+                best_order = order.clone();
             }
-            best_score = score;
-            best_order = order.clone();
+            current_score = score;
         } else {
             order.swap(i, j);
         }
-        temp *= cool_rate;
     }
 
     let mut operations = vec![];
-    let score = play2(&AB, &best_order);
+    let score = play(&AB, &best_order);
     for i in 0..N - 1 {
         operations.push((0, best_order[i]));
     }
@@ -102,42 +88,28 @@ fn solve() {
     eprintln!("turn: {}", operations.len());
 }
 
-fn play2(AB: &[(isize, isize)], order: &[usize]) -> usize {
+fn play(AB: &[(isize, isize)], order: &[usize]) -> usize {
     let N = AB.len();
     let mut now = AB[0];
     for i in 0..N - 1 {
         let ret = op(now, AB[order[i]]);
         now = ret;
     }
-    calc_score(now)
-}
-
-fn play(AB: &[(isize, isize)], order: &[usize]) -> (usize, usize) {
-    let N = AB.len();
-    let mut now = AB[0];
-    let mut best_score = calc_score(now);
-    let mut best_idx = 0;
-    for i in 0..N - 1 {
-        let ret = op(now, AB[order[i]]);
-        now = ret;
-        let score = calc_score(now);
-        if score > best_score {
-            best_score = score;
-            best_idx = i;
-        }
-    }
-    (best_score, best_idx)
+    calc_score(calc_cost(now))
 }
 
 fn op(u: (isize, isize), v: (isize, isize)) -> (isize, isize) {
     ((u.0 + v.0) / 2, (u.1 + v.1) / 2)
 }
 
-fn calc_score(ab: (isize, isize)) -> usize {
+fn calc_cost(ab: (isize, isize)) -> usize {
     let v1 = (ab.0 - TARGET).abs();
     let v2 = (ab.1 - TARGET).abs();
-    let mx = max!(v1, v2) as f64;
-    let score = 2e6 - 1e5 * (mx + 1.0).log10();
+    max!(v1, v2) as usize
+}
+
+fn calc_score(cost: usize) -> usize {
+    let score = 2e6 - 1e5 * (cost as f64 + 1.0).log10();
     score.floor() as usize
 }
 
