@@ -21,7 +21,6 @@ fn main() {
         eprintln!("Seed: {seed}");
         rnd::init(seed);
     }
-    // let time_keeper = TimeKeeper::new(0.9);
 
     solve();
 
@@ -37,6 +36,7 @@ fn main() {
 
 const TARGET: isize = 5e17 as isize;
 const TURN_MAX: usize = 50;
+const TEMP: usize = 20000;
 
 fn solve() {
     input! {
@@ -44,6 +44,7 @@ fn solve() {
         AB: [(isize, isize); N]
     }
 
+    let temp: usize = os_env::get::<usize>("temp").unwrap_or(TEMP);
     let time_keeper = TimeKeeper::new(0.8);
 
     let mut order = (1..N).collect::<Vec<usize>>();
@@ -66,7 +67,8 @@ fn solve() {
         let diff = score as f64 - current_score as f64;
         // diff=score-current_score
         // diff>=0, exp(diff)>=1
-        if rnd::gen_float() < (diff / 1e5 / 0.2).exp() {
+        // if rnd::gen_float() < (diff / 1e5 / 0.2).exp() {
+        if rnd::gen_float() < (diff / temp as f64).exp() {
             if score > best_score {
                 best_score = score;
                 best_order = order.clone();
@@ -230,6 +232,15 @@ impl TimeKeeper {
         {
             elapsed_time
         }
+    }
+}
+
+pub mod os_env {
+    const PREFIX: &str = "AHC_PARAMS_";
+
+    pub fn get<T: std::str::FromStr>(name: &str) -> Option<T> {
+        let name = format!("{}{}", PREFIX, name.to_uppercase());
+        std::env::var(name).ok()?.parse().ok()
     }
 }
 

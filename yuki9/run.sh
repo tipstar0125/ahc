@@ -1,2 +1,2 @@
 
-cargo run --bin a --features local < tools/in/in002.txt > out
+cargo run --bin a --features local < tools/in/in001.txt > out
