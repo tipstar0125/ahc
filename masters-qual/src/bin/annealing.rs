@@ -8,7 +8,10 @@
 #![allow(clippy::needless_range_loop)]
 #![allow(dead_code)]
 
-use std::collections::{HashMap, VecDeque};
+use std::{
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap, VecDeque},
+};
 
 use proconio::{fastout, input, marker::Chars};
 use rand::prelude::*;
@@ -19,28 +22,69 @@ struct Solver {}
 impl Solver {
     fn solve(&mut self) {
         let start = std::time::Instant::now();
-
-        let time_keeper = TimeKeeper::new(1.98);
+        let time_limit = 1.98;
+        let time_keeper = TimeKeeper::new(time_limit);
         let mut input = read_input();
         let mut rng = rand_pcg::Pcg64Mcg::new(12345);
 
-        let mut init_state = State::default();
-        let mut cnt = 0;
+        let init_pos1 = init_pos(input.n, &mut rng, &input);
+        let init_pos2 = init_pos(input.n, &mut rng, &input);
+        let mut state = State::new(&mut input, init_pos1, init_pos2, &mut rng);
+        // state.init_solve(&input);
 
-        while time_keeper.get_time() <= 0.1 {
-            cnt += 1;
-            let init_pos1 = init_pos(input.n, &mut rng, &input);
-            let init_pos2 = init_pos(input.n, &mut rng, &input);
-            let mut state = State::new(&mut input, init_pos1, init_pos2, &mut rng);
-            state.init_solve(&input);
-            if state.cost < init_state.cost {
-                init_state = state;
+        // 最終盤面において、各数字がどこにあるかを保存(差分計算用)
+        let mut coords = vec![Coord::new(0, 0); input.n * input.n + 1];
+        for i in 0..input.n {
+            for j in 0..input.n {
+                let coord = Coord::new(i, j);
+                let val = state.board[coord];
+                coords[val as usize] = coord;
             }
         }
-        let mut best_state = init_state.clone();
-        let mut state = init_state;
 
-        while !time_keeper.isTimeOver() {}
+        let mut best_state = state.clone();
+        let mut cnt = 0;
+        let T0 = (input.n as f64).powf(3.0);
+        let T1 = 1.0;
+
+        // あるターンにおいて、スワップする場所から、スワップする数字がわかる。
+        // スワップする数字がわかれば、最終盤面において、その数字をスワップすれば、
+        // スワップをしたときのコストの増減がわかる。
+        // スワップするときは、スワップしたターンから最後まで、スワップにかかわる数字を変更する。
+        while !time_keeper.isTimeOver() {
+            cnt += 1;
+            let t = rng.gen_range(0..state.max_turn);
+            let v1 = state.val1[t];
+            let v2 = state.val2[t];
+            let pos1 = coords[v1 as usize];
+            let pos2 = coords[v2 as usize];
+            let diff = state.swap_with_calc_cost_diff(pos1, pos2, &input.legal_actions);
+
+            let temp = T0 + (T1 - T0) * time_keeper.get_time() / time_limit;
+            if diff <= 0 || rng.gen_bool((-diff as f64 / temp).exp()) {
+                state.cost += diff;
+                state.swap(pos1, pos2);
+                state.swaps[t] = !state.swaps[t];
+                coords[v1 as usize] = pos2;
+                coords[v2 as usize] = pos1;
+                for turn in t..state.max_turn {
+                    if state.val1[turn] == v1 {
+                        state.val1[turn] = v2;
+                    } else if state.val1[turn] == v2 {
+                        state.val1[turn] = v1;
+                    }
+                    if state.val2[turn] == v1 {
+                        state.val2[turn] = v2;
+                    } else if state.val2[turn] == v2 {
+                        state.val2[turn] = v1;
+                    }
+                }
+            }
+            if state.cost < best_state.cost {
+                best_state.cost = state.cost;
+                best_state.swaps = state.swaps.clone();
+            }
+        }
 
         best_state.output();
         eprintln!("Cost: {}", best_state.cost);
@@ -75,6 +119,8 @@ struct State {
     route2: Vec<Coord>,
     dir1: Vec<usize>,
     dir2: Vec<usize>,
+    val1: Vec<isize>,
+    val2: Vec<isize>,
     swaps: Vec<bool>,
     max_turn: usize,
     board: DynamicMap2d<isize>,
@@ -82,18 +128,6 @@ struct State {
 }
 
 impl State {
-    fn default() -> Self {
-        State {
-            route1: vec![],
-            route2: vec![],
-            dir1: vec![],
-            dir2: vec![],
-            swaps: vec![],
-            max_turn: 0,
-            board: DynamicMap2d::new_with(0, 1),
-            cost: std::isize::MAX,
-        }
-    }
     fn new(
         input: &mut Input,
         init_pos1: Coord,
@@ -126,6 +160,8 @@ impl State {
         let mut dir2 = vec![];
         let max_turn = 4 * input.n * input.n;
 
+        // 長さが最大ターンになるまで、DFSでつくって経路を追加
+        // 2回目以降のループでは経路が同じにならないように合法手をシャッフル
         while dir1.len() < max_turn {
             let mut visited = DynamicMap2d::new_with(false, input.n);
             visited[init_pos1] = true;
@@ -146,11 +182,21 @@ impl State {
         dir2.truncate(max_turn);
         route2.truncate(max_turn);
 
+        // 経路に置かれている数字を保存(焼きなましの差分計算用)
+        let mut val1 = vec![];
+        let mut val2 = vec![];
+        for i in 0..max_turn {
+            val1.push(input.board[route1[i]]);
+            val2.push(input.board[route2[i]]);
+        }
+
         State {
             route1,
             route2,
             dir1,
             dir2,
+            val1,
+            val2,
             swaps: vec![false; max_turn],
             max_turn,
             board: input.board.clone(),
@@ -188,6 +234,7 @@ impl State {
         after - before
     }
     fn init_solve(&mut self, input: &Input) {
+        // ターン0から改善したらスワップする山登り
         for i in 0..self.max_turn {
             let pos1 = self.route1[i];
             let pos2 = self.route2[i];
@@ -197,6 +244,8 @@ impl State {
                 self.cost += diff;
                 self.swaps[i] = true;
             }
+            self.val1[i] = self.board[pos1];
+            self.val2[i] = self.board[pos2];
         }
     }
     #[fastout]
