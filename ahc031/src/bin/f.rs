@@ -14,6 +14,7 @@ use bitset_fixed::BitSet;
 use itertools::{max, Itertools};
 use proconio::{input, marker::Usize1};
 use rand::prelude::*;
+use rustc_hash::FxHashSet;
 use superslice::*;
 
 fn main() {
@@ -32,29 +33,79 @@ fn main() {
 }
 
 fn solve() {
-    let time_limit = 2.9;
+    let input = read_input();
+    let mut out = vec![vec![(0, 0, 0, 0); input.N]; input.D];
+    for d in 0..input.D {
+        let mut now_i = 0;
+        let mut now_j = 0;
+        let mut width = input.W;
+        let mut height = input.W;
+        let mut used = vec![false; input.N];
+
+        for i in 0..input.N {
+            let mut cands = vec![];
+            for n in 0..input.N {
+                if used[n] {
+                    continue;
+                }
+                let chunk = width;
+                let len = ceil(input.A[d][n], chunk);
+                cands.push((chunk * len - input.A[d][n], n, chunk, len));
+                let chunk = height;
+                let len = ceil(input.A[d][n], chunk);
+                cands.push((chunk * len - input.A[d][n], n, chunk, len));
+            }
+            cands.sort();
+            let (_, n, chunk, len) = cands[0];
+            used[n] = true;
+            if chunk == height {
+                if width < len {
+                    break;
+                }
+                out[d][n] = (now_i, now_j, now_i + chunk, now_j + len);
+                now_j += len;
+                width -= len;
+            } else {
+                if height < len {
+                    break;
+                }
+                out[d][n] = (now_i, now_j, now_i + len, now_j + chunk);
+                now_i += len;
+                height -= len;
+            }
+            if i == input.N - 1 {
+                out[d][n].2 = input.W;
+                out[d][n].3 = input.W;
+            }
+        }
+    }
+
+    let mut density = vec![];
+    for d in 0..input.D {
+        let mut sum = 0;
+        for n in 0..input.N {
+            sum += input.A[d][n];
+        }
+        density.push(sum as f64 / 1e6);
+    }
+    let ave = density.iter().sum::<f64>() / density.len() as f64;
+    if ave > 0.975 {
+        output(&input, &out);
+        return;
+    }
+
+    let time_limit = 2.95;
     let time_keeper = TimeKeeper::new(time_limit);
     let mut rng = rand_pcg::Pcg64Mcg::new(0);
-    let input = read_input();
-
-    // let T0 = input.W as f64 * 2.0 * input.N as f64 / 5.0;
-    // let T1 = input.W as f64 / 2.0;
 
     let mut order = (0..input.N).collect_vec();
     let mut out = vec![vec![(0, 0, 0, 0); input.N]; input.D];
     let mut chunks = vec![vec![0; input.N]; input.D];
-    let cost = std::usize::MAX;
-
-    let mut iter = 0;
-    // let mut swap_i = 0;
-    // let mut swap_j = 0;
 
     let mut best_out = out.clone();
-    let mut best_cost = cost;
+    let mut best_cost = std::usize::MAX;
 
     while !time_keeper.isTimeOver() {
-        iter += 1;
-
         let mut now_i = 0;
         let mut now_j = 0;
         let mut width = input.W;
@@ -68,21 +119,19 @@ fn solve() {
             if chunk == 0 {
                 break;
             }
-            let mut mx = 0;
-            // let mut mx_height = 0;
-            // let mut mx_width = 0;
+            let mut mx_height = 0;
+            let mut mx_width = 0;
             for d in 0..input.D {
-                // mx_height.chmax(ceil(input.A[d][n], height));
-                // mx_width.chmax(ceil(input.A[d][n], width));
-                mx.chmax(ceil(input.A[d][n], chunk));
+                mx_height.chmax(ceil(input.A[d][n], height));
+                mx_width.chmax(ceil(input.A[d][n], width));
             }
-            // let (chunk, mx) = {
-            //     if mx_height * height < mx_width * width {
-            //         (height, mx_height)
-            //     } else {
-            //         (width, mx_width)
-            //     }
-            // };
+            let (chunk, mx) = {
+                if mx_height * height < mx_width * width {
+                    (height, mx_height)
+                } else {
+                    (width, mx_width)
+                }
+            };
 
             if chunk == height {
                 if width < mx {
@@ -108,9 +157,6 @@ fn solve() {
                 chunks[d][i] = chunk;
             }
         }
-        // for (n, (i, j)) in track.iter().enumerate().rev() {
-        //     eprintln!("n: {} i: {} j: {}", n, i, j);
-        // }
 
         let mut prefix_sum = vec![vec![0; input.N + 1]; input.D];
         for d in 0..input.D {
@@ -120,7 +166,7 @@ fn solve() {
             }
         }
 
-        let mut fixed_right = vec![0; input.D];
+        let mut fixed_right = vec![std::usize::MAX; input.D];
 
         for d in 0..input.D {
             for (k, (i, j)) in track.iter().enumerate().rev() {
@@ -143,17 +189,16 @@ fn solve() {
                         ok = false;
                         break;
                     }
-                    let len = ceil(input.A[d][nn], chunk);
 
-                    // let len_height = ceil(input.A[d][nn], height);
-                    // let len_width = ceil(input.A[d][nn], width);
-                    // let (chunk, len) = {
-                    //     if len_height * height < len_width * width {
-                    //         (height, len_height)
-                    //     } else {
-                    //         (width, len_width)
-                    //     }
-                    // };
+                    let len_height = ceil(input.A[d][nn], height);
+                    let len_width = ceil(input.A[d][nn], width);
+                    let (chunk, len) = {
+                        if len_height * height < len_width * width {
+                            (height, len_height)
+                        } else {
+                            (width, len_width)
+                        }
+                    };
 
                     if chunk == height {
                         if width < len {
@@ -199,28 +244,19 @@ fn solve() {
             best_out = out.clone();
         }
 
-        // let diff = next_cost as isize - cost as isize;
-        // let temp = T0 + (T1 - T0) * time_keeper.get_time() / time_limit;
-        // if diff <= 0 || rng.gen_bool((-diff as f64 / temp).exp()) {
-        //     cost = next_cost;
-        // } else {
-        //     order.swap(swap_i, swap_j);
-        // }
-
         let swap_i = rng.gen_range(0..input.N - 1);
-        // swap_j = swap_i + 1;
-        // while swap_i == swap_j {
-        //     swap_j = rng.gen_range(0..input.N);
-        // }
-        // order.swap(swap_i, swap_j);
         order.swap(swap_i, swap_i + 1);
     }
 
+    output(&input, &best_out);
+}
+
+fn output(input: &Input, out: &[Vec<(usize, usize, usize, usize)>]) {
     for d in 0..input.D {
         for n in 0..input.N {
             println!(
                 "{} {} {} {}",
-                best_out[d][n].0, best_out[d][n].1, best_out[d][n].2, best_out[d][n].3
+                out[d][n].0, out[d][n].1, out[d][n].2, out[d][n].3
             );
         }
     }
@@ -228,8 +264,7 @@ fn solve() {
     #[cfg(feature = "local")]
     {
         eprintln!("Local Mode");
-        eprintln!("Iteration: {}", iter);
-        let mut score = compute_score_details(&input, &best_out);
+        let mut score = compute_score_details(&input, &out);
         if score == 0 {
             score = 1e9 as i64;
         }
@@ -243,8 +278,6 @@ fn ceil(a: usize, b: usize) -> usize {
 
 fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>]) -> i64 {
     let mut score = 0;
-    let mut score1 = 0;
-    let mut score2 = 0;
     let mut change: Vec<(usize, usize, usize, usize, bool)> = vec![];
     let mut hs = BTreeSet::new();
     let mut vs = BTreeSet::new();
@@ -265,7 +298,6 @@ fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>
             let b = (i1 - i0) * (j1 - j0);
             if input.A[d][k] > b {
                 score += 100 * (input.A[d][k] - b) as i64;
-                score1 += 100 * (input.A[d][k] - b) as i64;
             }
             for j in j0..j1 {
                 if i0 > 0 {
@@ -288,7 +320,6 @@ fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>
             for &(i, j) in &hs {
                 if !hs2.contains(&(i, j)) {
                     score += 1;
-                    score2 += 1;
                     if d + 1 == out.len() {
                         if !change.is_empty()
                             && change[change.len() - 1]
@@ -304,7 +335,6 @@ fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>
             for &(j, i) in &vs {
                 if !vs2.contains(&(j, i)) {
                     score += 1;
-                    score2 += 1;
                     if d + 1 == out.len() {
                         if !change.is_empty()
                             && change[change.len() - 1]
@@ -320,7 +350,6 @@ fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>
             for &(i, j) in &hs2 {
                 if !hs.contains(&(i, j)) {
                     score += 1;
-                    score2 += 1;
                     if d + 1 == out.len() {
                         if !change.is_empty()
                             && change[change.len() - 1]
@@ -336,7 +365,6 @@ fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>
             for &(j, i) in &vs2 {
                 if !vs.contains(&(j, i)) {
                     score += 1;
-                    score2 += 1;
                     if d + 1 == out.len() {
                         if !change.is_empty()
                             && change[change.len() - 1]
@@ -353,8 +381,6 @@ fn compute_score_details(input: &Input, out: &[Vec<(usize, usize, usize, usize)>
         hs = hs2;
         vs = vs2;
     }
-    assert!(score == score1 + score2);
-    // eprintln!("{} {} {}", score, score1, score2);
     score + 1
 }
 
