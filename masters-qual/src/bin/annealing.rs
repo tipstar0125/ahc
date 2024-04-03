@@ -209,7 +209,7 @@ impl State {
         self.board[pos2] = tmp;
     }
     fn swap_with_calc_cost_diff(
-        &mut self,
+        &self,
         pos1: Coord,
         pos2: Coord,
         legal_actions: &DynamicMap2d<Vec<(usize, Coord)>>,
@@ -222,15 +222,21 @@ impl State {
         for nxt in legal_actions[pos2].iter() {
             before += (self.board[pos2] - self.board[nxt.1]).pow(2);
         }
-        self.swap(pos1, pos2);
         let mut after = 0;
         for nxt in legal_actions[pos1].iter() {
-            after += (self.board[pos1] - self.board[nxt.1]).pow(2);
+            if nxt.1 == pos2 {
+                after += (self.board[pos2] - self.board[pos1]).pow(2);
+            } else {
+                after += (self.board[pos2] - self.board[nxt.1]).pow(2);
+            }
         }
         for nxt in legal_actions[pos2].iter() {
-            after += (self.board[pos2] - self.board[nxt.1]).pow(2);
+            if nxt.1 == pos1 {
+                after += (self.board[pos1] - self.board[pos2]).pow(2);
+            } else {
+                after += (self.board[pos1] - self.board[nxt.1]).pow(2);
+            }
         }
-        self.swap(pos1, pos2);
         after - before
     }
     fn init_solve(&mut self, input: &Input) {
