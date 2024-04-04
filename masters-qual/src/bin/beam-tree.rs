@@ -35,12 +35,6 @@ fn main() {
         let init_pos1 = init_pos(&input, &mut rng);
         let init_pos2 = init_pos(&input, &mut rng);
 
-        let init_state = State {
-            pos1: init_pos1,
-            pos2: init_pos2,
-            board: input.board.clone(),
-        };
-
         let mut init_hash = 0;
         init_hash ^= input.pos1_hash[init_pos1];
         init_hash ^= input.pos2_hash[init_pos2];
@@ -60,16 +54,11 @@ fn main() {
         let depth = if input.t == 19 { 200 } else { 100 };
         let mut actions = vec![0];
         let mut action_cnt = 1;
-        let mut init_node = Node {
-            track_id: !0,
-            refs: 0,
-            score: input.cost,
-            hash: init_hash,
-            state: init_state,
-        };
+        let mut init_state = State::new(&input, init_pos1, init_pos2);
+        let mut init_node = Node::new(input.cost, init_hash);
 
         while action_cnt < MAX_TURN && !time_keeper.isTimeOver() {
-            let mut beam = BeamSearch::new(init_node, width, depth);
+            let mut beam = BeamSearch::new(init_state.clone(), init_node, width);
             let (action, best_node) =
                 beam.solve(depth.min(MAX_TURN - action_cnt), &mut input, &mut rng);
 
@@ -79,9 +68,10 @@ fn main() {
                 actions.push(row.swap);
             }
             action_cnt += action.len();
-            init_node = best_node;
-            init_node.track_id = !0;
-            init_node.refs = 0;
+            init_node = Node::new(best_node.score, best_node.hash);
+            for op in action.iter() {
+                init_state.apply(op);
+            }
         }
         actions.push(DIRS_MAP[&'.']);
         actions.push(DIRS_MAP[&'.']);
@@ -131,6 +121,36 @@ struct State {
 }
 
 impl State {
+    // 初期状態の生成
+    fn new(input: &Input, pos1: Coord, pos2: Coord) -> State {
+        State {
+            pos1,
+            pos2,
+            board: input.board.clone(),
+        }
+    }
+
+    // 差分更新で適用する
+    fn apply(&mut self, op: &Op) {
+        self.pos1 = self.pos1 + DIJ_DIFF[op.dir1];
+        self.pos2 = self.pos2 + DIJ_DIFF[op.dir2];
+        if op.swap == 1 {
+            let tmp = self.board[self.pos1];
+            self.board[self.pos1] = self.board[self.pos2];
+            self.board[self.pos2] = tmp;
+        }
+    }
+
+    // 差分更新で元に戻す
+    fn revert(&mut self, op: &Op) {
+        if op.swap == 1 {
+            let tmp = self.board[self.pos1];
+            self.board[self.pos1] = self.board[self.pos2];
+            self.board[self.pos2] = tmp;
+        }
+        self.pos1 = self.pos1 + DIJ_DIFF[DIRS_REVERSE[op.dir1]];
+        self.pos2 = self.pos2 + DIJ_DIFF[DIRS_REVERSE[op.dir2]];
+    }
     fn calc_diff_cost(&self, pos1: Coord, pos2: Coord, input: &Input) -> i64 {
         // スワップする周辺だけ差分更新
         let mut before = 0;
@@ -161,38 +181,44 @@ impl State {
 
 #[derive(Debug, Clone, Default)]
 struct Node {
-    track_id: usize,
-    refs: usize,
+    op: Op,
+    parent: usize, // 親Node
+    child: usize,  // 代表の子Node
+    prev: usize,   // 前の兄弟Node
+    next: usize,   // 次の兄弟Node
     score: i64,
     hash: u64,
-    state: State,
 }
+
 impl Node {
-    fn new_node(&self, cand: &Cand) -> Node {
-        let mut ret = self.clone();
-        ret.apply(cand);
-        ret
-    }
-    fn apply(&mut self, cand: &Cand) {
-        self.state.pos1 = cand.op.pos1;
-        self.state.pos2 = cand.op.pos2;
-        if cand.op.swap == 1 {
-            let tmp = self.state.board[self.state.pos1];
-            self.state.board[self.state.pos1] = self.state.board[self.state.pos2];
-            self.state.board[self.state.pos2] = tmp;
+    fn new(score: i64, hash: u64) -> Self {
+        Node {
+            op: Op::init(),
+            parent: !0,
+            child: !0,
+            prev: !0,
+            next: !0,
+            score,
+            hash,
         }
-        self.score = cand.eval_score;
-        self.hash = cand.hash;
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 struct Op {
     dir1: usize,
-    pos1: Coord,
     dir2: usize,
-    pos2: Coord,
     swap: usize,
+}
+
+impl Op {
+    fn init() -> Self {
+        Op {
+            dir1: !0,
+            dir2: !0,
+            swap: !0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -206,36 +232,175 @@ impl Cand {
     fn raw_score(&self, _input: &Input) -> i64 {
         self.eval_score
     }
+    fn to_node(&self) -> Node {
+        Node {
+            op: self.op,
+            parent: self.parent,
+            child: !0,
+            prev: !0,
+            next: !0,
+            score: self.eval_score,
+            hash: self.hash,
+        }
+    }
 }
 
 #[derive(Debug)]
 struct BeamSearch {
-    track: Vec<(usize, Op)>,
+    state: State,
+    leaf: Vec<usize>, // 子が存在しないNodeのindex
+    next_leaf: Vec<usize>,
     nodes: Vec<Node>,
-    free: Vec<usize>,
-    at: usize,
-    cands: Vec<Cand>,
+    cur_node: usize,
+    free: Vec<usize>, // nodesのうち使われていないindex
     max_width: usize,
 }
 impl BeamSearch {
-    fn new(node: Node, max_width: usize, max_turn: usize) -> BeamSearch {
-        let max_nodes = max_width * max_turn;
-        let mut nodes = vec![Node::default(); max_width * 2];
+    fn new(state: State, node: Node, max_width: usize) -> BeamSearch {
+        let max_nodes = max_width * 50;
+        let mut nodes = vec![Node::default(); max_nodes];
         nodes[0] = node;
+        let free = (1..max_nodes).rev().collect();
+
         BeamSearch {
-            free: (0..nodes.len()).collect(),
+            state,
             nodes,
-            at: 1,
-            track: Vec::with_capacity(max_nodes),
-            cands: Vec::with_capacity(max_width),
+            free,
+            leaf: vec![0],
+            next_leaf: vec![],
+            cur_node: 0,
             max_width,
         }
     }
 
-    fn enum_cands(&self, input: &mut Input, cands: &mut Vec<Cand>, rng: &mut rand_pcg::Pcg64Mcg) {
-        for &i in &self.free[..self.at] {
-            self.append_cands(input, i, cands, rng);
+    // 頂点を新たに追加する
+    // 代表の子Nodeの前に挿入する形で実装
+    fn add_node(&mut self, cand: Cand) {
+        let next = self.nodes[cand.parent].child;
+        let new = self.free.pop().expect("MAX_NODEが足りないよ");
+        if next != !0 {
+            self.nodes[next].prev = new;
         }
+        self.nodes[cand.parent].child = new;
+
+        self.next_leaf.push(new);
+        self.nodes[new] = Node {
+            next,
+            ..cand.to_node()
+        };
+    }
+
+    // 既に探索済みのノードで葉のノードを再帰的に消していく
+    fn del_node(&mut self, mut idx: usize) {
+        loop {
+            self.free.push(idx);
+            let Node {
+                prev, next, parent, ..
+            } = self.nodes[idx];
+            assert_ne!(parent, !0, "全てのノードを消そうとしています");
+            // 兄弟がいないなら親を消しに行く
+            if prev & next == !0 {
+                idx = parent;
+                continue;
+            }
+
+            if prev != !0 {
+                self.nodes[prev].next = next;
+            } else {
+                self.nodes[parent].child = next;
+            }
+            if next != !0 {
+                self.nodes[next].prev = prev;
+            }
+
+            break;
+        }
+    }
+
+    // dfsで木を走査
+    // 一本道の場合戻る必要はないのでそれをsingleで管理
+    fn dfs(
+        &mut self,
+        input: &mut Input,
+        cands: &mut Vec<Cand>,
+        single: bool,
+        rng: &mut rand_pcg::Pcg64Mcg,
+    ) {
+        if self.nodes[self.cur_node].child == !0 {
+            self.append_cands(input, self.cur_node, cands, rng);
+            return;
+        }
+
+        let node = self.cur_node;
+        let mut child = self.nodes[node].child;
+        let next_single = single & (self.nodes[child].next == !0);
+
+        // let prev_state=self.state.clone();
+        loop {
+            self.cur_node = child;
+            self.state.apply(&self.nodes[child].op);
+            self.dfs(input, cands, next_single, rng);
+
+            if !next_single {
+                self.state.revert(&self.nodes[child].op);
+                // assert!(prev_state==self.state);
+            }
+            child = self.nodes[child].next;
+            if child == !0 {
+                break;
+            }
+        }
+
+        if !next_single {
+            self.cur_node = node;
+        }
+    }
+
+    // 走査の非再帰実装
+    fn no_dfs(&mut self, input: &mut Input, cands: &mut Vec<Cand>, rng: &mut rand_pcg::Pcg64Mcg) {
+        // 1本道でなくなるまで潜る
+        loop {
+            let Node { next, child, .. } = self.nodes[self.cur_node];
+            if next == !0 || child == !0 {
+                break;
+            }
+            self.cur_node = child;
+            self.state.apply(&self.nodes[self.cur_node].op);
+        }
+
+        let root = self.cur_node;
+        loop {
+            let child = self.nodes[self.cur_node].child;
+            if child == !0 {
+                self.append_cands(input, self.cur_node, cands, rng);
+                loop {
+                    if self.cur_node == root {
+                        return;
+                    }
+                    let node = &self.nodes[self.cur_node];
+                    self.state.revert(&node.op);
+                    if node.next != !0 {
+                        self.cur_node = node.next;
+                        self.state.apply(&self.nodes[self.cur_node].op);
+                        break;
+                    }
+                    self.cur_node = node.parent;
+                }
+            } else {
+                self.cur_node = child;
+                self.state.apply(&self.nodes[self.cur_node].op);
+            }
+        }
+    }
+
+    fn enum_cands(
+        &mut self,
+        input: &mut Input,
+        cands: &mut Vec<Cand>,
+        rng: &mut rand_pcg::Pcg64Mcg,
+    ) {
+        // self.dfs(input, cands, true, rng);
+        self.no_dfs(input, cands, rng);
     }
 
     fn append_cands(
@@ -246,10 +411,12 @@ impl BeamSearch {
         rng: &mut rand_pcg::Pcg64Mcg,
     ) {
         let parent_node = &self.nodes[parent_idx];
+        assert_eq!(parent_node.child, !0);
+
         let parent_score = parent_node.score;
         let parent_hash = parent_node.hash;
-        let pos1 = parent_node.state.pos1;
-        let pos2 = parent_node.state.pos2;
+        let pos1 = self.state.pos1;
+        let pos2 = self.state.pos2;
         for &(dir1, nxt1) in input.legal_actions[pos1].iter() {
             for &(dir2, nxt2) in input.legal_actions[pos2].iter() {
                 if dir1 == dir2 && dir1 == DIRS_MAP[&'.'] {
@@ -265,39 +432,29 @@ impl BeamSearch {
                     let diff_score = if swap == 0 {
                         0
                     } else {
-                        next_hash ^= input.hashes[parent_node.state.board[nxt1] as usize][&nxt1];
+                        next_hash ^= input.hashes[self.state.board[nxt1] as usize][&nxt1];
                         #[allow(clippy::map_entry)]
-                        if input.hashes[parent_node.state.board[nxt1] as usize].contains_key(&nxt2)
-                        {
-                            next_hash ^=
-                                input.hashes[parent_node.state.board[nxt1] as usize][&nxt2];
+                        if input.hashes[self.state.board[nxt1] as usize].contains_key(&nxt2) {
+                            next_hash ^= input.hashes[self.state.board[nxt1] as usize][&nxt2];
                         } else {
                             let hash = rng.gen::<u64>();
                             next_hash ^= hash;
-                            input.hashes[parent_node.state.board[nxt1] as usize].insert(nxt2, hash);
+                            input.hashes[self.state.board[nxt1] as usize].insert(nxt2, hash);
                         }
 
-                        next_hash ^= input.hashes[parent_node.state.board[nxt2] as usize][&nxt2];
+                        next_hash ^= input.hashes[self.state.board[nxt2] as usize][&nxt2];
                         #[allow(clippy::map_entry)]
-                        if input.hashes[parent_node.state.board[nxt2] as usize].contains_key(&nxt1)
-                        {
-                            next_hash ^=
-                                input.hashes[parent_node.state.board[nxt2] as usize][&nxt1];
+                        if input.hashes[self.state.board[nxt2] as usize].contains_key(&nxt1) {
+                            next_hash ^= input.hashes[self.state.board[nxt2] as usize][&nxt1];
                         } else {
                             let hash = rng.gen::<u64>();
                             next_hash ^= hash;
-                            input.hashes[parent_node.state.board[nxt2] as usize].insert(nxt1, hash);
+                            input.hashes[self.state.board[nxt2] as usize].insert(nxt1, hash);
                         }
 
-                        parent_node.state.calc_diff_cost(nxt1, nxt2, input)
+                        self.state.calc_diff_cost(nxt1, nxt2, input)
                     };
-                    let op = Op {
-                        dir1,
-                        pos1: nxt1,
-                        dir2,
-                        pos2: nxt2,
-                        swap,
-                    };
+                    let op = Op { dir1, dir2, swap };
 
                     let cand = Cand {
                         op,
@@ -312,48 +469,34 @@ impl BeamSearch {
     }
 
     fn update<I: Iterator<Item = Cand>>(&mut self, cands: I) {
-        self.cands.clear();
+        self.next_leaf.clear();
         for cand in cands {
-            self.nodes[cand.parent].refs += 1;
-            self.cands.push(cand);
+            self.add_node(cand);
         }
 
-        for i in (0..self.at).rev() {
-            if self.nodes[self.free[i]].refs == 0 {
-                self.at -= 1;
-                self.free.swap(i, self.at);
+        for i in 0..self.leaf.len() {
+            let n = self.leaf[i];
+            // 子が存在しないノードは無駄なので消す
+            if self.nodes[n].child == !0 {
+                self.del_node(n);
             }
         }
 
-        for cand in &self.cands {
-            let node = &mut self.nodes[cand.parent];
-            node.refs -= 1;
-            let prev = node.track_id;
-
-            let new = if node.refs == 0 {
-                node.apply(cand);
-                node
-            } else {
-                let mut new = node.new_node(cand);
-                new.refs = 0;
-                let idx = self.free[self.at];
-                self.at += 1;
-                self.nodes[idx] = new;
-                &mut self.nodes[idx]
-            };
-
-            self.track.push((prev, cand.op));
-            new.track_id = self.track.len() - 1;
-        }
+        std::mem::swap(&mut self.leaf, &mut self.next_leaf);
     }
 
     fn restore(&self, mut idx: usize) -> Vec<Op> {
-        idx = self.nodes[idx].track_id;
         let mut ret = vec![];
-        while idx != !0 {
-            ret.push(self.track[idx].1);
-            idx = self.track[idx].0;
+        let op_init = Op::init();
+        loop {
+            let Node { op, parent, .. } = self.nodes[idx];
+            if op == op_init {
+                break;
+            }
+            ret.push(op);
+            idx = parent;
         }
+
         ret.reverse();
         ret
     }
@@ -383,8 +526,7 @@ impl BeamSearch {
         }
 
         let best = cands.iter().min_by_key(|a| a.raw_score(input)).unwrap();
-        let parent_node = &self.nodes[best.parent];
-        let best_node = parent_node.new_node(best);
+        let best_node = best.to_node();
         let mut ret = self.restore(best.parent);
         ret.push(best.op);
         (ret, best_node)
@@ -404,7 +546,14 @@ fn init_pos(input: &Input, rng: &mut rand_pcg::Pcg64Mcg) -> Coord {
 
 const DIRS: [char; 5] = ['U', 'D', 'L', 'R', '.'];
 const DIJ: [(usize, usize); 5] = [(!0, 0), (1, 0), (0, !0), (0, 1), (0, 0)];
-const DIRS_REVERSE: [usize; 4] = [1, 0, 3, 2];
+const DIJ_DIFF: [CoordDiff; 5] = [
+    CoordDiff::new(!0, 0),
+    CoordDiff::new(1, 0),
+    CoordDiff::new(0, !0),
+    CoordDiff::new(0, 1),
+    CoordDiff::new(0, 0),
+];
+const DIRS_REVERSE: [usize; 5] = [1, 0, 3, 2, 4];
 
 lazy_static::lazy_static! {
     static ref DIRS_MAP: HashMap<char, usize> = {
