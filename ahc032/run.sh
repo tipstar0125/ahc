@@ -1,0 +1,1 @@
+cargo run -r --features local --bin $1 < tools/in/$2.txt > $3 
