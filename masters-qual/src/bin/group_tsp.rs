@@ -18,69 +18,15 @@ use proconio::{fastout, input, marker::Chars};
 use rand::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-// Potential
-// t=0: 6984586
-// t=1: 8534380
-// t=2: 9111393
-// t=3: 7862334
-// t=4: 7487920
-// t=5: 8531081
-// t=6: 7125290
-// t=7: 11006891
-const PRE: [&str; 9] = ["47 46 45 44 100 99 98 95 93 97 48 49 50 51 77 81 84 86 89 96 59 56 53 54 76 79 82 85 87 94 60 57 55 58 73 75 78 83 88 92 43 42 41 63 68 72 74 80 90 91 40 39 38 61 64 67 70 71 2 1 37 36 35 52 62 65 66 69 4 3 33 32 31 34 23 19 16 11 7 5 30 29 27 25 21 18 15 12 9 6 28 26 24 22 20 17 14 13 10 8",
-"91 89 88 85 5 6 7 8 10 9 92 90 87 86 4 3 2 17 12 11 94 93 66 84 83 82 1 18 13 14 96 95 67 76 80 81 20 19 16 15 100 97 68 72 79 78 27 21 22 23 99 98 65 73 75 77 28 25 26 24 63 64 62 71 74 40 32 30 29 31 61 60 59 70 69 39 37 38 34 33 58 57 56 55 52 49 41 43 45 35 50 51 53 54 48 47 44 42 46 36",
-"78 80 82 84 87 90 89 86 77 76 75 73 71 69 36 79 81 83 85 88 92 93 91 74 72 70 68 67 65 37 151 148 147 101 99 96 95 94 66 64 63 62 61 60 38 150 146 144 105 103 
-100 98 97 59 58 57 56 55 54 39 149 143 141 110 108 106 104 102 50 51 53 52 49 46 41 152 137 132 121 114 111 109 107 42 43 47 48 45 44 40 154 133 131 130 116 115 113 112 33 30 22 19 20 28 35 155 136 135 134 120 119 118 117 23 21 18 16 14 32 34 156 138 140 139 125 124 123 122 17 15 13 11 9 29 31 157 153 145 142 129 128 127 126 12 10 8 5 3 26 27 159 158 160 163 183 182 178 177 7 6 4 2 1 24 25 161 162 164 167 184 186 190 194 198 202 206 210 214 224 225 165 166 168 173 180 187 
-191 195 199 203 207 211 215 222 223 169 170 171 175 181 188 192 196 200 204 208 212 216 219 221 172 174 176 179 185 189 193 197 201 205 209 213 217 218 220",
-"1 4 9 18 32 48 63 78 110 126 134 141 152 161 166 171 2 5 11 19 33 47 60 66 125 129 136 144 156 164 170 174 3 7 13 21 34 46 57 62 130 132 139 149 159 169 176 180 6 8 14 23 35 45 55 61 135 137 143 154 163 173 181 183 10 12 17 26 36 44 53 59 138 140 148 158 168 178 185 187 15 16 20 28 37 43 51 56 142 145 153 162 172 182 188 190 25 22 24 30 38 42 50 54 147 151 157 165 175 184 189 193 40 29 27 31 39 41 49 52 150 155 160 167 177 186 192 198 58 65 71 80 91 97 102 107 204 208 216 
-218 226 230 228 217 64 67 73 82 92 100 106 111 203 207 215 219 227 233 235 232 68 69 75 85 95 104 112 116 201 206 214 220 229 237 241 242 70 72 79 89 99 109 117 119 199 205 213 221 231 240 245 247 74 76 84 94 103 114 120 122 196 202 212 222 234 243 249 251 77 81 88 98 108 118 124 127 195 200 211 223 236 244 250 254 83 87 93 101 113 121 128 133 191 197 210 224 238 246 252 255 86 90 96 105 115 123 131 146 179 194 209 225 239 248 253 256",
-"2 3 5 20 29 40 54 72 106 110 117 144 180 193 200 215 224 233 234 1 6 10 18 30 41 52 86 101 111 126 148 167 198 206 217 225 232 236 4 8 13 19 31 46 62 81 100 113 132 153 172 192 207 220 229 237 242 7 9 15 21 36 51 69 84 105 123 141 160 177 188 211 226 231 244 248 11 12 16 24 37 55 75 102 115 140 151 170 184 197 216 228 238 249 254 14 23 27 35 38 57 63 114 149 156 179 185 194 196 230 243 255 259 262 17 22 26 39 45 58 67 129 143 157 195 199 208 223 251 257 264 265 270 25 28 32 43 53 66 78 134 152 166 202 209 219 239 250 261 278 287 280 33 34 44 50 65 77 103 124 165 178 201 218 260 263 281 289 297 302 308 42 48 49 64 68 71 128 138 164 182 204 241 258 271 288 294 304 309 311 47 56 59 61 137 139 146 163 173 222 227 247 266 274 301 310 313 315 317 74 70 73 60 136 135 158 171 191 214 235 253 
-272 282 300 312 318 319 320 76 80 88 104 118 133 150 169 203 212 246 256 283 291 326 321 325 327 324 79 83 92 107 119 131 147 187 205 221 245 269 286 296 330 333 334 331 361 82 85 93 116 122 154 162 186 213 277 284 285 295 307 328 337 342 350 357 87 90 94 121 127 145 176 183 240 267 290 292 299 305 336 338 347 352 356 89 91 98 109 125 159 174 181 273 279 293 306 329 335 339 341 348 354 358 96 97 99 130 142 161 175 189 268 275 303 316 322 344 343 346 349 353 360 95 108 112 
-120 155 168 190 210 252 276 298 314 323 332 340 345 351 355 359",
-"1 23 24 65 67 68 73 84 92 98 105 112 118 124 129 131 123 117 114 111 2 26 27 61 66 69 75 86 93 99 107 115 121 127 135 145 169 205 219 225 3 29 30 56 63 70 78 88 94 102 113 119 126 132 141 148 158 223 227 228 8 28 32 44 62 72 82 90 96 100 125 128 134 140 146 151 157 237 235 230 16 22 25 31 71 79 89 95 101 103 136 138 
-143 149 155 161 164 248 243 245 17 18 19 20 80 87 97 104 109 110 144 147 153 162 166 170 174 265 273 276 15 13 12 11 85 91 108 116 120 122 154 159 167 176 179 
-181 183 270 274 275 14 9 7 6 81 83 130 133 137 139 163 165 184 188 190 194 196 269 271 272 21 10 5 4 76 77 150 152 156 160 168 171 199 202 206 212 216 263 266 
-267 38 47 54 57 298 297 172 173 175 177 178 180 211 214 218 224 234 252 260 264 45 51 55 60 295 293 192 191 189 186 185 187 215 221 226 232 240 249 257 261 49 
-53 58 64 291 289 220 217 209 195 193 197 208 229 233 239 244 250 255 258 48 52 59 74 286 277 253 241 231 198 200 204 210 236 238 242 246 251 254 256 43 46 50 106 284 279 268 259 247 201 203 207 213 400 399 397 392 393 396 398 40 41 42 142 282 283 280 281 290 335 339 344 348 363 367 374 384 389 394 395 36 37 39 182 278 285 288 292 296 334 338 343 346 360 365 371 380 386 390 391 33 34 35 222 262 287 294 299 302 331 336 342 347 357 362 368 376 382 387 388 327 322 318 314 308 
-300 301 305 312 325 333 341 349 355 359 366 372 377 383 385 328 323 319 315 309 303 304 310 317 326 332 340 350 354 358 364 369 373 379 381 329 324 320 316 311 306 307 313 321 330 337 345 351 352 353 356 361 370 375 378",
-"119 114 106 97 89 79 70 62 53 46 37 31 25 20 14 11 7 4 2 1 126 121 113 104 94 85 75 66 57 49 41 35 27 22 17 13 9 6 5 3 137 132 125 116 105 95 84 74 65 55 48 40 34 29 23 18 15 12 10 8 149 145 140 130 120 109 96 87 76 68 58 50 43 38 32 26 24 21 19 16 161 158 153 147 139 128 115 102 91 82 72 63 56 52 45 39 36 33 30 28 173 171 168 163 155 146 135 122 110 99 90 81 73 67 60 54 51 47 44 42 189 187 184 179 172 164 154 143 134 123 111 101 93 86 77 71 69 64 61 59 208 206 202 198 192 183 175 166 157 148 138 127 117 107 98 92 88 83 80 78 227 225 221 217 211 204 196 188 180 170 162 151 142 133 124 118 112 108 103 100 250 247 242 238 234 226 
-218 209 201 193 185 177 167 159 150 144 141 136 131 129 273 270 265 261 256 248 239 231 222 214 207 199 191 182 174 169 165 160 156 152 301 297 293 287 281 272 262 253 245 237 228 220 212 203 195 190 186 181 178 176 324 321 317 312 307 300 290 279 269 260 251 241 233 224 216 210 205 200 197 194 344 341 337 334 330 322 313 304 294 284 274 263 254 244 236 229 223 219 215 213 361 358 354 351 347 340 332 326 316 308 299 288 277 264 255 249 240 235 232 230 375 371 368 365 362 356 350 343 335 327 318 309 298 286 276 267 258 252 246 243 385 382 380 377 374 369 363 357 349 342 333 325 315 305 295 285 275 266 259 257 393 390 389 386 383 
-378 372 366 359 353 346 338 329 320 310 302 291 280 271 268 398 396 394 392 388 384 379 373 367 360 352 345 336 328 319 311 303 292 282 278 400 399 397 395 391 387 381 376 370 364 355 348 339 331 323 314 306 296 289 283",
-"363 370 371 321 322 324 328 331 332 383 382 381 385 392 393 397 398 399 31 35 364 368 355 349 348 323 333 334 362 361 367 380 384 391 394 396 395 400 32 34 365 366 360 346 344 341 338 337 343 353 372 376 386 388 64 63 16 17 24 37 374 369 358 359 345 335 339 340 342 347 390 389 387 74 66 67 20 19 25 39 375 373 356 357 327 329 326 330 336 287 291 292 75 73 71 69 23 27 26 40 377 378 354 352 325 318 319 311 301 286 288 289 77 76 70 68 29 30 33 41 295 379 303 351 350 317 320 294 293 284 285 290 80 82 78 60 61 62 38 42 296 298 304 305 312 314 313 275 274 273 83 85 87 86 79 81 59 57 44 45 297 299 302 306 309 315 279 277 235 260 249 84 
-120 96 72 65 58 56 52 49 256 300 308 307 310 316 232 231 234 236 238 239 121 105 117 51 50 43 53 48 257 255 252 248 244 237 230 229 191 227 228 220 122 114 116 115 21 36 54 47 258 254 251 250 218 221 226 225 192 194 203 210 132 3 1 18 22 28 55 46 176 175 213 216 219 222 223 245 172 184 148 149 141 5 8 13 12 9 10 90 177 178 214 215 217 224 233 246 173 174 166 159 161 4 2 15 14 7 11 91 180 179 197 211 212 240 241 247 253 165 162 160 163 136 135 101 100 6 95 93 181 182 198 196 209 208 242 243 259 167 168 158 164 138 139 140 99 98 97 94 183 201 200 202 205 204 266 264 262 261 169 154 150 137 133 134 119 104 102 92 185 186 195 199 206 207 267 265 263 171 170 145 146 142 128 123 118 106 103 89 187 190 193 281 280 271 270 269 157 152 151 147 126 127 129 130 113 110 109 88 188 189 283 282 278 276 272 268 156 155 153 144 143 125 124 131 112 111 108 107",
-""];
-
 fn main() {
     let start = std::time::Instant::now();
-    let time_limit = 1000.0;
+    let time_limit = 1.8;
     let time_keeper = TimeKeeper::new(time_limit);
     let mut rng = rand_pcg::Pcg64Mcg::new(12345);
     let input = read_input();
-
-    let (init_board, st, goal) = make_init_board_head_and_tail_start(&input);
-    let mut state = State::new(
-        &input,
-        st,
-        goal,
-        annealing(&input, init_board, &mut rng, &time_keeper),
-    );
-
-    // let mut target_board = DynamicMap2d::new_with(0, input.n);
-    // for (i, x) in PRE[0]
-    //     .split_whitespace()
-    //     .map(|v| v.parse::<usize>().unwrap())
-    //     .enumerate()
-    // {
-    //     let pos = Coord::new(i / input.n, i % input.n);
-    //     target_board[pos] = x;
-    // }
-
-    eprintln!(
-        "{}",
-        state.best_board.to_2d_vec().iter().flatten().join(" ")
-    );
-
-    state.quick_sort(&input);
+    let target = make_target(&input, &mut rng, &time_keeper);
+    let mut state = State::new(&input, &target);
+    state.quick_sort_by_group(&input, &target);
     state.output();
     let cost = calc_cost(&state.board, &input);
     let score = calc_score(input.cost, cost);
@@ -97,42 +43,334 @@ fn main() {
     eprintln!("Elapsed: {}", (elapsed_time * 1000.0) as usize);
 }
 
-fn make_init_board_head_start(input: &Input) -> DynamicMap2d<i64> {
-    let mut board = DynamicMap2d::new_with(0, input.n);
-    let mut used = DynamicMap2d::new_with(false, input.n);
-    let mut now = 1_i64;
-    let mut Q = VecDeque::new();
+struct Target {
+    board: DynamicMap2d<i64>,
+    start: Coord,
+    goal: Coord,
+    group_num: usize,
+    group_board: DynamicMap2d<usize>,
+    group_dist: Vec<Vec<usize>>,
+    num_to_group: Vec<usize>,
+}
 
-    let mut cands = vec![];
+fn make_target(input: &Input, rng: &mut rand_pcg::Pcg64Mcg, time_keeper: &TimeKeeper) -> Target {
+    let (init_board, start, goal) = make_init_board_head_and_tail_start(input);
+    let target_board = annealing(input, init_board, rng, time_keeper);
+    let depth = if input.n <= 15 {
+        2
+    } else if input.n <= 30 {
+        3
+    } else {
+        4
+    };
+    let group_num = 1_usize << depth;
+    let (group_board, group_dist) = make_group_from_target_board(depth, input, rng, &target_board);
+    // let (group_board, group_dist) = make_group_random(group_num, input, rng, time_keeper);
+    let mut num_to_group = vec![!0; input.n2];
     for i in 0..input.n {
         for j in 0..input.n {
             let pos = Coord::new(i, j);
-            cands.push((input.legal_actions[pos].len(), i, j));
+            let num = target_board[pos] - 1;
+            num_to_group[num as usize] = group_board[pos];
         }
     }
-    cands.sort();
-    let (_, i, j) = cands[0];
-    Q.push_back(Coord::new(i, j));
+    Target {
+        board: target_board,
+        start,
+        goal,
+        group_num,
+        group_board,
+        group_dist,
+        num_to_group,
+    }
+}
 
-    while now as usize <= input.n2 {
-        while let Some(pos) = Q.pop_front() {
+fn make_group_from_target_board(
+    depth: usize,
+    input: &Input,
+    rng: &mut rand_pcg::Pcg64Mcg,
+    board: &DynamicMap2d<i64>,
+) -> (DynamicMap2d<usize>, Vec<Vec<usize>>) {
+    let mut Q = VecDeque::new();
+    let mut sep = vec![];
+    Q.push_back((0, 0, input.n2));
+    while let Some((d, left, right)) = Q.pop_front() {
+        if d == depth {
+            sep.push((left, right));
+            continue;
+        }
+        let mid = (left + right) / 2;
+        Q.push_back((d + 1, left, mid));
+        Q.push_back((d + 1, mid, right));
+    }
+    sep.sort();
+
+    let mut group = DynamicMap2d::new_with(!0, input.n);
+    for i in 0..input.n {
+        for j in 0..input.n {
+            let pos = Coord::new(i, j);
+            let x = (board[pos] - 1) as usize;
+            for (g, &(left, right)) in sep.iter().enumerate() {
+                if left <= x && x < right {
+                    group[pos] = g;
+                }
+            }
+        }
+    }
+
+    let group_num = 1_usize << depth;
+    let mut used = DynamicMap2d::new_with(false, input.n);
+    let mut connected = vec![vec![]; group_num];
+    for i in 0..input.n {
+        for j in 0..input.n {
+            let pos = Coord::new(i, j);
             if used[pos] {
                 continue;
             }
-            board[pos] = now;
+            let g = group[pos];
+            let mut v = vec![pos];
+            let mut Q = VecDeque::new();
             used[pos] = true;
+            Q.push_back(pos);
+            while let Some(pos) = Q.pop_front() {
+                for (_, nxt) in input.legal_actions[pos].iter() {
+                    if used[*nxt] {
+                        continue;
+                    }
+                    if group[*nxt] != g {
+                        continue;
+                    }
+                    used[*nxt] = true;
+                    Q.push_back(*nxt);
+                    v.push(*nxt);
+                }
+            }
+            if connected[g].len() < v.len() {
+                connected[g] = v;
+            }
+        }
+    }
+
+    let mut modified_group = DynamicMap2d::new_with(!0, input.n);
+    for g in 0..group_num {
+        for pos in connected[g].iter() {
+            modified_group[*pos] = g;
+        }
+    }
+
+    let mut counts = vec![0; group_num];
+    for (i, v) in connected.iter().enumerate() {
+        counts[i] = v.len();
+    }
+
+    let mut not_used = vec![];
+    for i in 0..input.n {
+        for j in 0..input.n {
+            let pos = Coord::new(i, j);
+            if modified_group[pos] == !0 {
+                not_used.push(pos);
+            }
+        }
+    }
+    not_used.shuffle(rng);
+
+    let INF = 1_usize << 60;
+    while let Some(pos) = not_used.pop() {
+        let mut cnt = INF;
+        let mut g = 0;
+        for (_, nxt) in input.legal_actions[pos].iter() {
+            if modified_group[*nxt] == !0 {
+                continue;
+            }
+            if counts[modified_group[*nxt]] < cnt {
+                cnt = counts[modified_group[*nxt]];
+                g = modified_group[*nxt];
+            }
+        }
+        if cnt == INF {
+            not_used.push(pos);
+            not_used.shuffle(rng);
+        } else {
+            modified_group[pos] = g;
+        }
+    }
+
+    #[cfg(feature = "local")]
+    visualizer::vis_grp(
+        input.n,
+        &input.vs,
+        &input.hs,
+        &modified_group.to_2d_vec(),
+        group_num,
+    );
+
+    let mut G = vec![vec![]; group_num];
+    for i in 0..input.n {
+        for j in 0..input.n {
+            let pos = Coord::new(i, j);
             for (_, nxt) in input.legal_actions[pos].iter() {
-                if !used[*nxt] {
+                if modified_group[pos] != modified_group[*nxt] {
+                    G[modified_group[pos]].push(modified_group[*nxt]);
+                    G[modified_group[*nxt]].push(modified_group[pos]);
+                }
+            }
+        }
+    }
+    for g in 0..group_num {
+        G[g].sort();
+        G[g].dedup();
+    }
+
+    let mut dist = vec![vec![INF; group_num]; group_num];
+    for g in 0..group_num {
+        let mut Q = VecDeque::new();
+        dist[g][g] = 0;
+        Q.push_back(g);
+        while let Some(pos) = Q.pop_front() {
+            for nxt in &G[pos] {
+                if dist[g][pos] + 1 < dist[g][*nxt] {
+                    dist[g][*nxt] = dist[g][pos] + 1;
                     Q.push_back(*nxt);
                 }
             }
-            break;
         }
-        now += 1;
+    }
+
+    (modified_group, dist)
+}
+
+fn make_group_random(
+    group_num: usize,
+    input: &Input,
+    rng: &mut rand_pcg::Pcg64Mcg,
+    time_keeper: &TimeKeeper,
+) -> (DynamicMap2d<usize>, Vec<Vec<usize>>) {
+    let mut best_group = DynamicMap2d::new_with(!0, input.n);
+    let INF = 1_usize << 60;
+    let mut best_score = INF;
+
+    while time_keeper.get_time() < 3.0 {
+        let mut centers = FxHashSet::default();
+        while centers.len() < group_num {
+            let i = rng.gen_range(0..input.n);
+            let j = rng.gen_range(0..input.n);
+            centers.insert((i, j));
+        }
+        let centers = centers
+            .into_iter()
+            .map(|(i, j)| Coord::new(i, j))
+            .collect_vec();
+
+        let mut group = DynamicMap2d::new_with(!0, input.n);
+        let mut Qs = vec![VecDeque::new(); group_num];
+        let mut cnt = 0;
+        for g in 0..group_num {
+            let pos = centers[g];
+            Qs[g].push_back(pos);
+            group[pos] = g;
+            cnt += 1;
+        }
+
+        'a: loop {
+            for g in 0..group_num {
+                if Qs[g].is_empty() {
+                    continue;
+                }
+                let pos = Qs[g].pop_front().unwrap();
+                for (_, nxt) in input.legal_actions[pos].iter() {
+                    if group[*nxt] != !0 {
+                        continue;
+                    }
+                    group[*nxt] = g;
+                    cnt += 1;
+                    Qs[g].push_back(*nxt);
+                    if cnt == input.n2 {
+                        break 'a;
+                    }
+                }
+            }
+        }
+
+        let mut coords = vec![vec![]; group_num];
+        for i in 0..input.n {
+            for j in 0..input.n {
+                let pos = Coord::new(i, j);
+                coords[group[pos]].push((i, j));
+            }
+        }
+        let mut score = 0;
+        for g in 0..group_num {
+            let mut row_max = 0;
+            let mut row_min = INF;
+            let mut col_max = 0;
+            let mut col_min = INF;
+            for &(row, col) in coords[g].iter() {
+                row_max = row_max.max(row);
+                col_max = col_max.max(col);
+                row_min = row_min.min(row);
+                col_min = col_min.min(col);
+            }
+            score = score.max(row_max - row_min + col_max - col_min);
+        }
+
+        let mut counts = vec![0; group_num];
+        for i in 0..input.n {
+            for j in 0..input.n {
+                let pos = Coord::new(i, j);
+                counts[group[pos]] += 1;
+            }
+        }
+        let mx = counts.iter().max().unwrap();
+        let mn = counts.iter().min().unwrap();
+        score += mx - mn;
+
+        if score < best_score {
+            best_score = score;
+            best_group = group;
+        }
     }
     #[cfg(feature = "local")]
-    visualizer::vis(input.n, &input.vs, &input.hs, &board.to_2d_vec());
-    board
+    visualizer::vis_grp(
+        input.n,
+        &input.vs,
+        &input.hs,
+        &best_group.to_2d_vec(),
+        group_num,
+    );
+
+    let mut G = vec![vec![]; group_num];
+    for i in 0..input.n {
+        for j in 0..input.n {
+            let pos = Coord::new(i, j);
+            for (_, nxt) in input.legal_actions[pos].iter() {
+                if best_group[pos] != best_group[*nxt] {
+                    G[best_group[pos]].push(best_group[*nxt]);
+                    G[best_group[*nxt]].push(best_group[pos]);
+                }
+            }
+        }
+    }
+    for g in 0..group_num {
+        G[g].sort();
+        G[g].dedup();
+    }
+
+    let mut dist = vec![vec![INF; group_num]; group_num];
+    for g in 0..group_num {
+        let mut Q = VecDeque::new();
+        dist[g][g] = 0;
+        Q.push_back(g);
+        while let Some(pos) = Q.pop_front() {
+            for nxt in &G[pos] {
+                if dist[g][pos] + 1 < dist[g][*nxt] {
+                    dist[g][*nxt] = dist[g][pos] + 1;
+                    Q.push_back(*nxt);
+                }
+            }
+        }
+    }
+
+    (best_group, dist)
 }
 
 fn make_init_board_head_and_tail_start(input: &Input) -> (DynamicMap2d<i64>, Coord, Coord) {
@@ -269,8 +507,9 @@ fn annealing(
 
     let T0 = (4 * input.n.pow(2)) as f64;
     let T1 = 1.0;
+    let time_limit = 1.2;
 
-    while !time_keeper.isTimeOver() {
+    while time_keeper.get_time() < time_limit {
         let i1 = rng.gen_range(0..input.n);
         let j1 = rng.gen_range(0..input.n);
         let pos1 = Coord::new(i1, j1);
@@ -281,7 +520,7 @@ fn annealing(
             continue;
         }
         let diff = state.calc_diff_cost(pos1, pos2, input);
-        let temp = T0 + (T1 - T0) * time_keeper.get_time() / time_keeper.time_threshold;
+        let temp = T0 + (T1 - T0) * time_keeper.get_time() / time_limit;
         if diff <= 0 || rng.gen_bool((-diff as f64 / temp).exp()) {
             state.swap(pos1, pos2);
             state.cost += diff;
@@ -291,8 +530,8 @@ fn annealing(
             best_state.cost = state.cost;
         }
     }
-    let score = calc_score(input.cost, best_state.cost);
-    eprintln!("Potential: {}", score);
+    // let score = calc_score(input.cost, best_state.cost);
+    // eprintln!("Ideal score: {}", score);
     #[cfg(feature = "local")]
     visualizer::vis(input.n, &input.vs, &input.hs, &best_state.board.to_2d_vec());
     best_state.board
@@ -333,21 +572,19 @@ struct State {
     pos1: Coord,
     pos2: Coord,
     board: DynamicMap2d<i64>,
-    best_board: DynamicMap2d<i64>,
     actions: Vec<usize>,
 }
 
 impl State {
-    fn new(input: &Input, pos1: Coord, pos2: Coord, best_board: DynamicMap2d<i64>) -> State {
+    fn new(input: &Input, target: &Target) -> State {
         State {
             n: input.n,
             n2: input.n2,
-            init_pos1: pos1,
-            init_pos2: pos2,
-            pos1,
-            pos2,
+            init_pos1: target.start,
+            init_pos2: target.goal,
+            pos1: target.start,
+            pos2: target.goal,
             board: input.board.clone(),
-            best_board,
             actions: vec![0],
         }
     }
@@ -356,20 +593,25 @@ impl State {
         self.board[pos1] = self.board[pos2];
         self.board[pos2] = tmp;
     }
-    fn search_different(&self, left: usize, right: usize) -> (usize, DynamicMap2d<u8>) {
+    fn search_different(
+        &self,
+        left: usize,
+        right: usize,
+        target: &Target,
+    ) -> (usize, DynamicMap2d<u8>) {
         let mut different = DynamicMap2d::new_with(0, self.n);
         let mid = (left + right) / 2;
         let mut cnt = 0;
         for i in 0..self.n {
             for j in 0..self.n {
                 let coord = Coord::new(i, j);
-                let best_val = self.best_board[coord] as usize - 1;
+                let target_val = target.board[coord] as usize - 1;
                 let now_val = self.board[coord] as usize - 1;
-                if left <= best_val && best_val < mid && mid <= now_val && now_val < right {
+                if left <= target_val && target_val < mid && mid <= now_val && now_val < right {
                     different[coord] = 1;
                     cnt += 1;
                 }
-                if left <= now_val && now_val < mid && mid <= best_val && best_val < right {
+                if left <= now_val && now_val < mid && mid <= target_val && target_val < right {
                     different[coord] = 2;
                     cnt += 1;
                 }
@@ -378,7 +620,34 @@ impl State {
         cnt /= 2;
         (cnt, different)
     }
-    fn quick_sort(&mut self, input: &Input) {
+    fn search_different_by_group(
+        &self,
+        left: usize,
+        right: usize,
+        target: &Target,
+    ) -> (Vec<(usize, usize)>, DynamicMap2d<u8>) {
+        let mut different = DynamicMap2d::new_with(0, self.n);
+        let mid = (left + right) / 2;
+        let mut counts = vec![(0, 0); target.group_num];
+        for i in 0..self.n {
+            for j in 0..self.n {
+                let coord = Coord::new(i, j);
+                let target_val = target.board[coord] as usize - 1;
+                let now_val = self.board[coord] as usize - 1;
+                let g = target.group_board[coord];
+                if left <= target_val && target_val < mid && mid <= now_val && now_val < right {
+                    different[coord] = 1;
+                    counts[g].0 += 1;
+                }
+                if left <= now_val && now_val < mid && mid <= target_val && target_val < right {
+                    different[coord] = 2;
+                    counts[g].1 += 1;
+                }
+            }
+        }
+        (counts, different)
+    }
+    fn quick_sort(&mut self, input: &Input, target: &Target) {
         let mut Q = vec![];
         let mut next_Q = vec![];
         let mut cnt = 0;
@@ -387,7 +656,7 @@ impl State {
             if left == right {
                 continue;
             }
-            self.tsp(input, left, right);
+            self.tsp(input, left, right, target);
             if self.actions.len() > 3 * 4 * self.n2 {
                 break;
             }
@@ -406,11 +675,146 @@ impl State {
             }
         }
     }
-    fn tsp(&mut self, input: &Input, left: usize, right: usize) {
-        let (cnt, mut different) = self.search_different(left, right);
+    fn quick_sort_by_group(&mut self, input: &Input, target: &Target) {
+        let mut Q = vec![];
+        let mut next_Q = vec![];
+        let mut cnt = 0;
+        Q.push((0, self.n2));
+        while let Some((left, right)) = Q.pop() {
+            if left == right {
+                continue;
+            }
+            self.tsp_by_group(input, left, right, target);
+            if self.actions.len() > 3 * 4 * self.n2 {
+                break;
+            }
+            if right - left > 1 {
+                let mid = (left + right) / 2;
+                next_Q.push((left, mid));
+                next_Q.push((mid, right));
+            }
+            if Q.is_empty() {
+                std::mem::swap(&mut Q, &mut next_Q);
+                Q.sort();
+                if cnt % 2 == 1 {
+                    Q.reverse();
+                }
+                cnt += 1;
+            }
+        }
+    }
+    fn tsp(&mut self, input: &Input, left: usize, right: usize, target: &Target) {
+        let (cnt, mut different) = self.search_different(left, right, target);
         for _ in 0..cnt {
             let mut actions1 = self.bfs(input, self.pos1, 1, &mut different);
             let mut actions2 = self.bfs(input, self.pos2, 2, &mut different);
+            assert!(!(actions1.is_empty() && actions2.is_empty()));
+            while actions1.len() < actions2.len() {
+                actions1.push(DIRS_MAP[&'.']);
+            }
+            while actions1.len() > actions2.len() {
+                actions2.push(DIRS_MAP[&'.']);
+            }
+            for i in 0..actions1.len() {
+                self.actions.push(actions1[i]);
+                self.pos1 = self.pos1 + DIJ_DIFF[actions1[i]];
+                self.actions.push(actions2[i]);
+                self.pos2 = self.pos2 + DIJ_DIFF[actions2[i]];
+                self.actions.push(0);
+            }
+            *self.actions.last_mut().unwrap() = 1;
+            self.swap(self.pos1, self.pos2);
+        }
+    }
+    fn bitdp(&self, pos: Coord, go_group: Vec<usize>, target: &Target) -> Vec<usize> {
+        let INF = 1_usize << 60;
+        let MAX = 1 << target.group_num;
+        let mut dp = vec![vec![INF; target.group_num]; MAX];
+        let start = target.group_board[pos];
+        dp[1 << start][start] = 0;
+        for s in 1..MAX {
+            for &frm in go_group.iter() {
+                if s & (1 << frm) == 0 {
+                    continue;
+                }
+                for &to in go_group.iter() {
+                    if s & (1 << to) == 0 {
+                        continue;
+                    }
+                    let bs = s ^ (1 << to);
+                    dp[s][to] = dp[s][to].min(dp[bs][frm] + target.group_dist[frm][to]);
+                }
+            }
+        }
+
+        let mut d_min = INF;
+        let mut frm = 0;
+        let mut status = 0;
+        for &g in go_group.iter() {
+            status ^= 1 << g;
+        }
+        for (i, &d) in dp[status].iter().enumerate() {
+            if d < d_min {
+                d_min = d;
+                frm = i;
+            }
+        }
+        let mut route = vec![frm];
+        while dp[status][frm] != 0 {
+            for &to in go_group.iter() {
+                let bs = status ^ (1 << frm);
+                if dp[bs][to] + target.group_dist[frm][to] == dp[status][frm] {
+                    route.push(to);
+                    status = bs;
+                    frm = to;
+                    break;
+                }
+            }
+        }
+        route.reverse();
+        route
+    }
+    fn tsp_by_group(&mut self, input: &Input, left: usize, right: usize, target: &Target) {
+        let (mut counts, mut different) = self.search_different_by_group(left, right, target);
+        let mut cnt = 0;
+        for (c, _) in counts.iter() {
+            cnt += c;
+        }
+
+        let mut go_group1 = vec![];
+        let mut go_group2 = vec![];
+        go_group1.push(target.group_board[self.pos1]);
+        go_group2.push(target.group_board[self.pos2]);
+        for g in 0..target.group_num {
+            if counts[g].0 > 0 {
+                go_group1.push(g);
+            }
+            if counts[g].1 > 0 {
+                go_group2.push(g);
+            }
+        }
+        go_group1.sort();
+        go_group1.dedup();
+        go_group2.sort();
+        go_group2.dedup();
+
+        let route1 = self.bitdp(self.pos1, go_group1, target);
+        let route2 = self.bitdp(self.pos2, go_group2, target);
+        let mut group_idx1 = 0;
+        let mut group_idx2 = 0;
+        for _ in 0..cnt {
+            while counts[route1[group_idx1]].0 == 0 {
+                group_idx1 += 1;
+            }
+            while counts[route2[group_idx2]].1 == 0 {
+                group_idx2 += 1;
+            }
+            let g1 = route1[group_idx1];
+            let g2 = route2[group_idx2];
+            let mut actions1 = self.bfs_by_group(input, self.pos1, 1, &mut different, g1, target);
+            counts[g1].0 -= 1;
+            let mut actions2 = self.bfs_by_group(input, self.pos2, 2, &mut different, g2, target);
+            counts[g2].1 -= 1;
             assert!(!(actions1.is_empty() && actions2.is_empty()));
             while actions1.len() < actions2.len() {
                 actions1.push(DIRS_MAP[&'.']);
@@ -446,6 +850,35 @@ impl State {
                     let mut nxt_actions = actions.clone();
                     nxt_actions.push(dir);
                     if different[nxt] == search {
+                        different[nxt] = 0;
+                        return nxt_actions;
+                    }
+                    dist.insert(nxt, dist[&pos] + 1);
+                    Q.push_back((nxt, nxt_actions));
+                }
+            }
+        }
+        vec![]
+    }
+    fn bfs_by_group(
+        &self,
+        input: &Input,
+        st: Coord,
+        search: u8,
+        different: &mut DynamicMap2d<u8>,
+        group: usize,
+        target: &Target,
+    ) -> Vec<usize> {
+        let mut dist: FxHashMap<Coord, usize> = FxHashMap::default();
+        dist.insert(st, 0);
+        let mut Q = VecDeque::new();
+        Q.push_back((st, vec![]));
+        while let Some((pos, actions)) = Q.pop_front() {
+            for &(dir, nxt) in input.legal_actions[pos].iter() {
+                if !dist.contains_key(&nxt) || dist[&pos] + 1 < dist[&nxt] {
+                    let mut nxt_actions = actions.clone();
+                    nxt_actions.push(dir);
+                    if different[nxt] == search && target.group_board[nxt] == group {
                         different[nxt] = 0;
                         return nxt_actions;
                     }
@@ -948,5 +1381,48 @@ mod visualizer {
         doc = partition(doc, hs, vs, d);
         let vis = format!("<html><body>{}</body></html>", doc);
         std::fs::write("vis.html", vis).unwrap();
+    }
+
+    pub fn vis_grp(
+        N: usize,
+        vs: &[Vec<char>],
+        hs: &[Vec<char>],
+        board: &[Vec<usize>],
+        group_num: usize,
+    ) {
+        let height = 800.0;
+        let width = 800.0;
+        let d = height / N as f32;
+        let mut doc = doc(height, width);
+        doc = doc.add(Style::new(format!(
+            "text {{text-anchor: middle; dominant-baseline: central; font-size: {}}}",
+            10
+        )));
+
+        for i in 0..N {
+            for j in 0..N {
+                let rec = rect(
+                    j as f32 * d,
+                    i as f32 * d,
+                    d,
+                    d,
+                    &color(board[i][j] as f64 / group_num as f64),
+                );
+                let text = txt(
+                    j as f32 * d + d / 2.0,
+                    i as f32 * d + d / 2.0,
+                    &board[i][j].to_string(),
+                );
+                let mut grp = group(format!("(i, j) = ({}, {})\n{}", i, j, board[i][j]));
+                grp = grp.add(rec);
+                if N <= 20 {
+                    grp = grp.add(text);
+                }
+                doc = doc.add(grp);
+            }
+        }
+        doc = partition(doc, hs, vs, d);
+        let vis = format!("<html><body>{}</body></html>", doc);
+        std::fs::write("group.html", vis).unwrap();
     }
 }
