@@ -1,0 +1,1 @@
+cargo run -r --features local --bin $1 < in/$1/$2 > out/$1/$2
